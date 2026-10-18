@@ -251,6 +251,53 @@ footer { border-top: 1px solid var(--border); padding: 3rem 0 2rem; }
   .js .reveal:not(.in) { transform: none; }
   .window, .fc-1, .fc-2 { transform: none; }
 }
+
+/* Motion. Runs only when the visitor hasn't asked for reduced motion; otherwise the page renders in its final state. */
+@media (prefers-reduced-motion: no-preference) {
+  :root { --dur-fast: .18s; --dur-med: .6s; --dur-slow: .9s; --ease-out: cubic-bezier(.16, 1, .3, 1); }
+  @keyframes rise { from { opacity: 0; transform: translateY(20px); } }
+  @keyframes fade-in { from { opacity: 0; } }
+  @keyframes window-in { from { opacity: 0; translate: 0 32px; scale: .96; } }
+  @keyframes float { 50% { translate: 0 -8px; } }
+  @keyframes breathe { 50% { opacity: .45; } }
+  @keyframes corner-in { from { opacity: 0; scale: .2; } }
+  @keyframes pulse-ring { from { box-shadow: 0 0 0 4px var(--primary-subtle); } to { box-shadow: 0 0 0 14px transparent; } }
+
+  /* Scroll reveals: fade and rise; siblings in a grid wait for the ones before them (--i set by script). */
+  .js .reveal { transition: opacity var(--dur-med) var(--ease-out), transform var(--dur-med) var(--ease-out); transition-delay: calc(var(--i, 0) * 90ms); }
+  .js .reveal:not(.in) { opacity: 0; transform: translateY(18px); }
+  .js .stagger > * { transition: opacity var(--dur-med) var(--ease-out), transform var(--dur-med) var(--ease-out); transition-delay: calc(120ms + var(--i, 0) * 70ms); }
+  .js .stagger:not(.in) > * { opacity: 0; transform: translateY(12px); }
+
+  /* Hero: plays on load instead of on scroll. */
+  .js .hero .reveal:not(.in) { opacity: 1; transform: none; }
+  .hero-copy > * { animation: rise var(--dur-slow) var(--ease-out) both; }
+  .hero-copy > :nth-child(2) { animation-delay: .12s; }
+  .hero-copy > :nth-child(3) { animation-delay: .24s; }
+  .corner { animation: corner-in var(--dur-slow) var(--ease-out) .35s both; }
+  .halo { animation: breathe 6s ease-in-out infinite; }
+  .window { animation: window-in 1s var(--ease-out) .15s both, float 7s ease-in-out 1.2s infinite; }
+  .win-main .file { animation: rise .5s var(--ease-out) both; animation-delay: calc(.55s + var(--i, 0) * 80ms); }
+  .fc-1 { animation: fade-in .6s var(--ease-out) .8s both, float 6s ease-in-out 1.4s infinite; }
+  .fc-2 { animation: fade-in .6s var(--ease-out) 1s both, float 8s ease-in-out 1.8s infinite reverse; }
+  .chip-ok .dot { animation: breathe 1.6s ease-in-out infinite; }
+
+  /* Roadmap: the line draws down; the current phase pulses. */
+  .js .timeline::before { transform-origin: top; transition: transform 1.4s var(--ease-out); }
+  .js .timeline:not(.in)::before { transform: scaleY(0); }
+  .timeline li.now::before { animation: pulse-ring 2s ease-out infinite; }
+  .mode-glow::before { animation: breathe 5s ease-in-out infinite; }
+
+  /* Micro-interactions */
+  .btn { transition: background-color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease); }
+  .btn:hover { transform: translateY(-1px); }
+  .btn:active { transform: scale(.97); }
+  .btn-primary:hover { box-shadow: 0 8px 20px -8px color-mix(in oklab, var(--primary) 70%, transparent); }
+  a.card { transition: border-color var(--dur-fast) var(--ease), transform .3s var(--ease-out), box-shadow .3s var(--ease-out); }
+  a.card:hover { box-shadow: var(--shadow-float); }
+  .ficon { transition: transform .35s var(--ease-out); }
+  .card:hover .ficon { transform: rotate(-6deg) scale(1.08); }
+}
 </style>
 </head>
 <body class="no-js">
@@ -335,7 +382,7 @@ footer { border-top: 1px solid var(--border); padding: 3rem 0 2rem; }
         </div>
         <div class="float-card fc-2">
           <span class="k">server sees</span>
-          <span style="font:11px var(--mono);word-break:break-all;color:var(--text-muted)">0x01·9f3c…a7e2·7d1b04e6c95f…</span>
+          <span id="cipher" style="font:11px var(--mono);word-break:break-all;color:var(--text-muted)">0x01·9f3c…a7e2·7d1b04e6c95f…</span>
         </div>
       </div>
     </div>
@@ -618,6 +665,37 @@ docker compose up -d</pre>
     es.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); } });
   }, { rootMargin: "0px 0px -8% 0px" });
   document.querySelectorAll(".reveal").forEach(function (el) { io.observe(el); });
+
+  // Stagger: grid siblings and list items enter one after another (delays come from --i in CSS).
+  function index(el) { return Math.min([].indexOf.call(el.parentNode.children, el), 6); }
+  document.querySelectorAll(".cards-3 > .reveal, .timeline > .reveal, .split > .reveal, .win-main .file").forEach(function (el) { el.style.setProperty("--i", index(el)); });
+  document.querySelectorAll(".stats, .chain, .checks, .chat").forEach(function (list) {
+    list.classList.add("stagger");
+    [].forEach.call(list.children, function (c) { c.style.setProperty("--i", index(c)); });
+    io.observe(list);
+  });
+  document.querySelectorAll(".timeline").forEach(function (t) { io.observe(t); });
+
+  if (!reduce) {
+    var hex = "0123456789abcdef";
+    // "Your keys." decodes from ciphertext on load. The heading keeps its real text for screen readers.
+    var h1 = document.getElementById("hero-title"), em = h1 && h1.querySelector("em");
+    if (em) {
+      h1.setAttribute("aria-label", h1.innerText.replace(/\s+/g, " ").trim());
+      var plain = em.textContent, s0 = performance.now();
+      (function decode(t) {
+        var p = Math.max(0, Math.min(1, (t - s0 - 350) / 900)), n = Math.floor(p * plain.length);
+        em.textContent = plain.slice(0, n) + plain.slice(n).replace(/[^\s.]/g, function () { return hex[Math.random() * 16 | 0]; });
+        if (p < 1) requestAnimationFrame(decode);
+      })(s0);
+    }
+    // The "server sees" card shows ever-changing ciphertext.
+    var cipher = document.getElementById("cipher");
+    if (cipher) setInterval(function () {
+      function h(len) { var s = ""; while (s.length < len) s += hex[Math.random() * 16 | 0]; return s; }
+      cipher.textContent = "0x01·" + h(4) + "…" + h(4) + "·" + h(12) + "…";
+    }, 1600);
+  }
 
   // Count-up stats.
   if (!reduce) {
