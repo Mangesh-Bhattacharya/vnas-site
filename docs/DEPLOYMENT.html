@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Deployment · vNAS</title>
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect x='3' y='3' width='10' height='10' rx='3' fill='%23d36000'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<script>try { var t = localStorage.getItem("vnas-theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch (e) {}</script>
+<link rel="stylesheet" href="docs.css">
+</head>
+<body>
+<header class="bar"><div class="wrap">
+  <a class="logo" href="../"><i></i>vNAS</a>
+  <nav aria-label="Documentation"><a href="OPERATOR_MANUAL.html">Operator manual</a><a href="DEPLOYMENT.html" aria-current="page">Deployment</a><a href="SECURITY.html">Security model</a><a href="ARCHITECTURE.html">Architecture</a><a href="API.html">API</a><a href="SYNC.html">Sync & offline</a><a href="AI.html">AI assistant</a><a href="ROADMAP.html">Roadmap</a></nav>
+</div></header>
+<main class="wrap"><article class="doc"><h1 id="deployment-updates-and-building-from-source">Deployment, updates and building from source</h1>
+<h2 id="1-local-development">1. Local development</h2>
+<p>Prerequisites: <strong>Go 1.26+</strong>, <strong>Node 22+</strong>. Optional: Rust (desktop), Android Studio / Xcode (mobile), Docker.</p>
+<div class="highlight highlight-source-shell"><pre class="notranslate">git clone <span class="pl-k">&lt;</span>repo<span class="pl-k">&gt;</span> vnas <span class="pl-k">&amp;&amp;</span> <span class="pl-c1">cd</span> vnas
+npm ci <span class="pl-k">&amp;&amp;</span> npm run build
+<span class="pl-c1">cd</span> server <span class="pl-k">&amp;&amp;</span> go <span class="pl-c1">test</span> ./... <span class="pl-k">&amp;&amp;</span> go run ./cmd/vnasd serve      <span class="pl-c"><span class="pl-c">#</span> API on 127.0.0.1:8080, data in ./data</span>
+npm run dev:web                                              <span class="pl-c"><span class="pl-c">#</span> UI on http://localhost:5173 (proxies /api)</span></pre></div>
+<p>Tests:</p>
+<div class="highlight highlight-source-shell"><pre class="notranslate"><span class="pl-c1">cd</span> server <span class="pl-k">&amp;&amp;</span> go <span class="pl-c1">test</span> -race ./...                             <span class="pl-c"><span class="pl-c">#</span> server integration tests</span>
+VNAS_DATA_DIR=<span class="pl-s"><span class="pl-pds">$(</span>mktemp -d<span class="pl-pds">)</span></span> VNAS_SIGNUP_MODE=open VNAS_AUTH_RATE_PER_MIN=1000 go run ./cmd/vnasd serve <span class="pl-k">&amp;</span>
+VNAS_E2E_URL=http://127.0.0.1:8080 npm <span class="pl-c1">test</span>                  <span class="pl-c"><span class="pl-c">#</span> client unit + end-to-end</span></pre></div>
+<h2 id="2-configuration-environment-variables">2. Configuration (environment variables)</h2>
+<markdown-accessiblity-table><table role="table">
+<thead>
+<tr>
+<th>Variable</th>
+<th>Default</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code class="notranslate">VNAS_ADDR</code></td>
+<td><code class="notranslate">127.0.0.1:8080</code></td>
+<td>Listen address</td>
+</tr>
+<tr>
+<td><code class="notranslate">VNAS_PUBLIC_URL</code></td>
+<td><code class="notranslate">http://localhost:8080</code></td>
+<td>External URL (origin checks, link URLs). <strong>Must be https in production</strong></td>
+</tr>
+<tr>
+<td><code class="notranslate">VNAS_DATA_DIR</code></td>
+<td><code class="notranslate">./data</code></td>
+<td>Database, blobs, <code class="notranslate">server-keys.json</code></td>
+</tr>
+<tr>
+<td><code class="notranslate">VNAS_DB_PATH</code> / <code class="notranslate">VNAS_BLOB_DIR</code></td>
+<td>under the data dir</td>
+<td>Put blobs on a large disk / NFS / SMB mount</td>
+</tr>
+<tr>
+<td><code class="notranslate">VNAS_TLS_CERT</code> / <code class="notranslate">VNAS_TLS_KEY</code></td>
+<td>–</td>
+<td>Native TLS (otherwise terminate at Caddy or nginx)</td>
+</tr>
+<tr>
+<td><code class="notranslate">VNAS_TRUSTED_PROXIES</code></td>
+<td>–</td>
+<td>CIDRs whose <code class="notranslate">X-Forwarded-For</code> is honored</td>
+</tr>
+<tr>
+<td><code class="notranslate">VNAS_SIGNUP_MODE</code></td>
+<td><code class="notranslate">invite</code></td>
+<td><code class="notranslate">closed</code> / <code class="notranslate">invite</code> / <code class="notranslate">open</code></td>
+</tr>
+<tr>
+<td><code class="notranslate">VNAS_DEFAULT_QUOTA_BYTES</code></td>
+<td><code class="notranslate">0</code></td>
+<td>Per-user quota (0 = unlimited)</td>
+</tr>
+<tr>
+<td><code class="notranslate">VNAS_AUTH_RATE_PER_MIN</code></td>
+<td><code class="notranslate">10</code></td>
+<td>Auth attempts per IP and per account</td>
+</tr>
+<tr>
+<td><code class="notranslate">VNAS_SESSION_TTL</code> / <code class="notranslate">VNAS_SESSION_IDLE</code></td>
+<td><code class="notranslate">720h</code> / <code class="notranslate">336h</code></td>
+<td>Session lifetime</td>
+</tr>
+<tr>
+<td><code class="notranslate">VNAS_TRASH_RETENTION</code></td>
+<td><code class="notranslate">720h</code></td>
+<td>Auto-purge of trash</td>
+</tr>
+<tr>
+<td><code class="notranslate">VNAS_VERSIONS_TO_KEEP</code></td>
+<td><code class="notranslate">50</code></td>
+<td>File versions kept</td>
+</tr>
+<tr>
+<td><code class="notranslate">VNAS_WEB_DIR</code></td>
+<td>–</td>
+<td>Serve the built web client</td>
+</tr>
+<tr>
+<td><code class="notranslate">VNAS_METRICS_ADDR</code></td>
+<td>–</td>
+<td>Separate listener for <code class="notranslate">/metrics</code></td>
+</tr>
+<tr>
+<td><code class="notranslate">VNAS_ALERT_WEBHOOK</code></td>
+<td>–</td>
+<td>JSON POST target for alerts</td>
+</tr>
+</tbody>
+</table></markdown-accessiblity-table>
+<p><strong>Secrets never go in config or code.</strong> The server generates <code class="notranslate">server-keys.json</code> (0600) on first<br>
+start. The agent reads passwords and API keys from <code class="notranslate">*_FILE</code> paths (Docker/K8s secrets, systemd<br>
+<code class="notranslate">LoadCredential=</code>, or a file readable only by its user).</p>
+<h2 id="3-production-on-a-home-server-or-vps-docker-recommended">3. Production on a home server or VPS (Docker, recommended)</h2>
+<ol>
+<li>Point a DNS name at the machine. Open ports 80 and 443 (on a home network, forward them on the<br>
+router, or use a free Cloudflare Tunnel or Tailscale Funnel to avoid opening ports).</li>
+<li>Then:
+<div class="highlight highlight-source-shell"><pre class="notranslate"><span class="pl-c1">cd</span> deploy <span class="pl-k">&amp;&amp;</span> cp .env.example .env <span class="pl-k">&amp;&amp;</span> nano .env          <span class="pl-c"><span class="pl-c">#</span> set VNAS_DOMAIN, ACME_EMAIL</span>
+docker compose up -d
+docker compose logs -f vnasd</pre></div>
+</li>
+<li>Open <code class="notranslate">https://your-domain</code>, create the <strong>first account (it becomes admin)</strong>, and save the recovery key.</li>
+<li>Turn on two-factor authentication: Settings → Two-factor authentication.</li>
+<li>Invite others: Admin → Create invite (or <code class="notranslate">docker compose exec vnasd vnasd invite user</code>).</li>
+<li>Set up backups (§5).</li>
+</ol>
+<p>LAN-only / no domain: run <code class="notranslate">vnasd</code> with <code class="notranslate">VNAS_TLS_CERT/KEY</code> from <code class="notranslate">mkcert</code>, or put it behind Tailscale<br>
+(which provides the TLS).</p>
+<h3 id="without-docker">Without Docker</h3>
+<ul>
+<li><strong>Linux:</strong> use <code class="notranslate">deploy/systemd/vnasd.service</code> (sandboxed) plus Caddy from your distro.</li>
+<li><strong>Windows:</strong> download <code class="notranslate">vnasd-windows-amd64.exe</code>, then<br>
+<code class="notranslate">setx VNAS_DATA_DIR D:\vnas</code> and register it as a service with NSSM or <code class="notranslate">sc.exe create vnasd binPath= "C:\vnas\vnasd.exe serve"</code>.<br>
+Put Caddy for Windows in front.</li>
+<li><strong>macOS:</strong> <code class="notranslate">vnasd-darwin-arm64</code> + a <code class="notranslate">launchd</code> plist, with Caddy via Homebrew.</li>
+</ul>
+<h3 id="kubernetes">Kubernetes</h3>
+<p><code class="notranslate">deploy/k8s/vnas.yaml</code>: restricted Pod Security, read-only root filesystem, NetworkPolicy, probes,<br>
+single replica with <code class="notranslate">Recreate</code> (SQLite).</p>
+<h2 id="4-monitoring-and-alerts">4. Monitoring and alerts</h2>
+<ul>
+<li><code class="notranslate">/healthz</code>, <code class="notranslate">/readyz</code> for orchestrators; the container <code class="notranslate">HEALTHCHECK</code> uses <code class="notranslate">vnasd healthcheck</code>.</li>
+<li><code class="notranslate">/metrics</code> (Prometheus): <code class="notranslate">vnas_http_responses_total{class}</code>, <code class="notranslate">vnas_audit_events_total{action}</code><br>
+(for example <code class="notranslate">auth.login.fail</code>), <code class="notranslate">vnas_disk_free_bytes</code>, <code class="notranslate">vnas_stored_bytes</code>, <code class="notranslate">vnas_users</code>.</li>
+<li><strong>Built-in alerts</strong> to <code class="notranslate">VNAS_ALERT_WEBHOOK</code> (deduplicated, at most once per hour per key):<br>
+≥25 failed sign-ins in 10 min (spraying), ≥5 failures on one account, disk &lt;10% / &lt;5% free,<br>
+audit write failure. Free targets: self-hosted <strong>ntfy</strong> (phone push), Gotify, Alertmanager.</li>
+<li>Weekly: <code class="notranslate">docker compose exec vnasd vnasd audit-verify</code>.</li>
+</ul>
+<h2 id="5-backup-restore-disaster-recovery">5. Backup, restore, disaster recovery</h2>
+<p><strong>What to protect:</strong></p>
+<markdown-accessiblity-table><table role="table">
+<thead>
+<tr>
+<th>Item</th>
+<th>Why</th>
+<th>How</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code class="notranslate">vnas.db</code></td>
+<td>Accounts, structure, wrapped keys, audit</td>
+<td><code class="notranslate">vnasd backup-db</code> (consistent online snapshot)</td>
+</tr>
+<tr>
+<td><code class="notranslate">blobs/</code></td>
+<td>Encrypted file contents</td>
+<td>File copy (immutable, content-addressed)</td>
+</tr>
+<tr>
+<td><code class="notranslate">server-keys.json</code></td>
+<td>TOTP seeds, audit signing</td>
+<td>Copy; if lost, users re-enrol TOTP. <strong>Data is unaffected</strong></td>
+</tr>
+<tr>
+<td>Users' <strong>recovery keys</strong></td>
+<td>The only way back in if a password is forgotten</td>
+<td>Each user prints theirs. Admins cannot help</td>
+</tr>
+<tr>
+<td>restic password</td>
+<td>Decrypts the backups</td>
+<td>Store off-site (password manager plus a paper copy)</td>
+</tr>
+</tbody>
+</table></markdown-accessiblity-table>
+<div class="highlight highlight-source-shell"><pre class="notranslate"><span class="pl-k">export</span> RESTIC_REPOSITORY=/mnt/usb/vnas-backup  RESTIC_PASSWORD_FILE=/root/.restic-pass
+restic init                       <span class="pl-c"><span class="pl-c">#</span> once</span>
+deploy/backup/backup.sh           <span class="pl-c"><span class="pl-c">#</span> daily: cron "15 3 * * *"</span></pre></div>
+<p>Follow the 3-2-1 rule: one local USB copy plus one off-site repository (a second NAS at a friend's house<br>
+over SFTP, or B2/S3 storage). The data is encrypted twice, so any storage provider can be used.</p>
+<p><strong>Restore / DR</strong> on a new machine: install vnasd, run <code class="notranslate">deploy/backup/restore.sh latest /var/lib/vnas</code>,<br>
+start, run <code class="notranslate">vnasd audit-verify</code>, then sign in. Clients rebuild their caches automatically. Test a<br>
+restore every quarter. RPO = backup interval (≤ 24 h); RTO ≈ restore time (minutes for metadata,<br>
+plus blob download time).</p>
+<p><strong>Upgrade rollback:</strong> take <code class="notranslate">vnasd backup-db pre-upgrade.db</code>, upgrade, and if needed stop, put the<br>
+snapshot back as <code class="notranslate">vnas.db</code>, and run the previous image tag. Migrations are forward-only.</p>
+<h2 id="6-updates-and-security-patches">6. Updates and security patches</h2>
+<markdown-accessiblity-table><table role="table">
+<thead>
+<tr>
+<th>Component</th>
+<th>How users get updates</th>
+<th>Integrity</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Server image</td>
+<td><code class="notranslate">docker compose pull &amp;&amp; docker compose up -d</code> (pin <code class="notranslate">VNAS_VERSION</code>). Watchtower can automate this</td>
+<td>cosign signature: <code class="notranslate">cosign verify ghcr.io/&lt;org&gt;/vnas:&lt;tag&gt; --certificate-identity-regexp '.*' --certificate-oidc-issuer https://token.actions.githubusercontent.com</code></td>
+</tr>
+<tr>
+<td>Server binary</td>
+<td>Replace the file, restart</td>
+<td><code class="notranslate">cosign verify-blob --bundle SHA256SUMS.sigstore.json SHA256SUMS</code>, then <code class="notranslate">sha256sum -c</code></td>
+</tr>
+<tr>
+<td>Desktop</td>
+<td>Built-in updater prompts and installs</td>
+<td>minisign signature checked against the key compiled into the app</td>
+</tr>
+<tr>
+<td>Mobile</td>
+<td>App stores; signed OTA for JS fixes</td>
+<td>Store signing + Expo code signing</td>
+</tr>
+<tr>
+<td>Web</td>
+<td>Automatic on next page load</td>
+<td>Served by your server</td>
+</tr>
+</tbody>
+</table></markdown-accessiblity-table>
+<p>Release process: semver tags <code class="notranslate">vX.Y.Z</code> trigger <code class="notranslate">.github/workflows/release.yml</code>. Security fixes are<br>
+PATCH releases with a changelog <code class="notranslate">### Security</code> section and a GitHub Security Advisory.</p>
+<h2 id="7-building-installers-and-apps-from-source">7. Building installers and apps from source</h2>
+<h3 id="server-binaries">Server binaries</h3>
+<div class="highlight highlight-source-shell"><pre class="notranslate"><span class="pl-c1">cd</span> server
+GOOS=linux  GOARCH=arm64 CGO_ENABLED=0 go build -trimpath -ldflags <span class="pl-s"><span class="pl-pds">"</span>-s -w<span class="pl-pds">"</span></span> -o vnasd-linux-arm64 ./cmd/vnasd
+GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags <span class="pl-s"><span class="pl-pds">"</span>-s -w<span class="pl-pds">"</span></span> -o vnasd.exe ./cmd/vnasd
+docker build -t vnas:local ..</pre></div>
+<h3 id="desktop-windows-exemsi-macos-dmgapp-linux-appimagedebrpm">Desktop (Windows .exe/.msi, macOS .dmg/.app, Linux .AppImage/.deb/.rpm)</h3>
+<p>Prerequisites: Rust stable; Linux needs <code class="notranslate">libwebkit2gtk-4.1-dev libsecret-1-dev librsvg2-dev</code>;<br>
+Windows needs WebView2 (preinstalled on 10/11); macOS needs the Xcode command line tools.</p>
+<div class="highlight highlight-source-shell"><pre class="notranslate">npm ci <span class="pl-k">&amp;&amp;</span> npm run build -w packages/core
+<span class="pl-c1">cd</span> apps/desktop <span class="pl-k">&amp;&amp;</span> npm install
+npx tauri icon ../web/public/icon.svg               <span class="pl-c"><span class="pl-c">#</span> generate icons once</span>
+npx tauri signer generate -w <span class="pl-k">~</span>/.tauri/vnas.key      <span class="pl-c"><span class="pl-c">#</span> once: updater keypair → put pubkey in tauri.conf.json</span>
+TAURI_SIGNING_PRIVATE_KEY=<span class="pl-s"><span class="pl-pds">$(</span>cat <span class="pl-k">~</span>/.tauri/vnas.key<span class="pl-pds">)</span></span> npx tauri build
+<span class="pl-c"><span class="pl-c">#</span> output: src-tauri/target/release/bundle/{nsis,msi,dmg,macos,appimage,deb,rpm}</span></pre></div>
+<p>Code signing (optional but recommended): Windows via Authenticode certificate, Azure Trusted Signing,<br>
+or <strong>SignPath (free for OSS)</strong>; macOS via Developer ID plus notarization (requires an Apple Developer account).<br>
+Unsigned builds work but show SmartScreen / Gatekeeper warnings.</p>
+<h3 id="mobile-android-apkaab-ios-ipa">Mobile (Android APK/AAB, iOS IPA)</h3>
+<div class="highlight highlight-source-shell"><pre class="notranslate">npm ci <span class="pl-k">&amp;&amp;</span> npm run build -w packages/core
+<span class="pl-c1">cd</span> apps/mobile <span class="pl-k">&amp;&amp;</span> npm install
+npx expo prebuild                                <span class="pl-c"><span class="pl-c">#</span> generates native projects</span>
+npx expo run:android --variant release           <span class="pl-c"><span class="pl-c">#</span> local APK (needs Android SDK)</span>
+<span class="pl-c"><span class="pl-c">#</span> or cloud builds (EAS free tier):</span>
+npx eas build -p android --profile preview       <span class="pl-c"><span class="pl-c">#</span> installable APK for sideloading</span>
+npx eas build -p android --profile production    <span class="pl-c"><span class="pl-c">#</span> AAB for Google Play</span>
+npx eas build -p ios --profile production        <span class="pl-c"><span class="pl-c">#</span> IPA (needs an Apple Developer account)</span></pre></div>
+<p>Free distribution options for Android: direct APK, <strong>F-Droid</strong> (reproducible builds), Obtainium.<br>
+iOS requires the App Store or TestFlight; the PWA (<code class="notranslate">Add to Home Screen</code> in Safari) is the free<br>
+alternative and supports offline use.</p>
+<blockquote>
+<p><strong>Before the first mobile release:</strong> confirm that <code class="notranslate">react-native-libsodium</code> exposes every libsodium<br>
+function <code class="notranslate">@vnas/core</code> uses (<code class="notranslate">crypto_pwhash</code>, <code class="notranslate">crypto_kdf_derive_from_key</code>, <code class="notranslate">crypto_aead_xchacha20poly1305_ietf_*</code>,<br>
+<code class="notranslate">crypto_box_seal(_open)</code>, <code class="notranslate">crypto_sign_*</code>, <code class="notranslate">crypto_generichash</code>, <code class="notranslate">crypto_hash_sha256</code>, <code class="notranslate">memzero</code>).<br>
+Run the core test suite on a device. Any gap can be filled with a small native module or a JS fallback for that one function.</p>
+</blockquote></article></main>
+<footer class="wrap foot">Licensed AGPL-3.0-or-later · vNAS is pre-1.0 software. Keep backups. · <a href="../">Home</a></footer>
+</body>
+</html>

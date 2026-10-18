@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Security model · vNAS</title>
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect x='3' y='3' width='10' height='10' rx='3' fill='%23d36000'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<script>try { var t = localStorage.getItem("vnas-theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch (e) {}</script>
+<link rel="stylesheet" href="docs.css">
+</head>
+<body>
+<header class="bar"><div class="wrap">
+  <a class="logo" href="../"><i></i>vNAS</a>
+  <nav aria-label="Documentation"><a href="OPERATOR_MANUAL.html">Operator manual</a><a href="DEPLOYMENT.html">Deployment</a><a href="SECURITY.html" aria-current="page">Security model</a><a href="ARCHITECTURE.html">Architecture</a><a href="API.html">API</a><a href="SYNC.html">Sync & offline</a><a href="AI.html">AI assistant</a><a href="ROADMAP.html">Roadmap</a></nav>
+</div></header>
+<main class="wrap"><article class="doc"><h1 id="security-design">Security design</h1>
+<p>Security is the product. This document is the reference for what vNAS protects, how, and what it<br>
+deliberately does not protect. Report vulnerabilities privately; see §9.</p>
+<h2 id="1-assets-and-trust-boundaries">1. Assets and trust boundaries</h2>
+<markdown-accessiblity-table><table role="table">
+<thead>
+<tr>
+<th>Asset</th>
+<th>Where it lives</th>
+<th>Who can read it</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>File contents, names, tags, notes, vault entries, records</td>
+<td>Server: ciphertext. Devices: ciphertext cache plus plaintext in memory while unlocked</td>
+<td>Only members of the space, on unlocked devices</td>
+</tr>
+<tr>
+<td>Password</td>
+<td>The user's head. Never stored or transmitted</td>
+<td>Nobody</td>
+</tr>
+<tr>
+<td>Account master key (AMK)</td>
+<td>Server: wrapped by the password-derived key and by the recovery key. Device: memory, optionally the OS keystore</td>
+<td>The user</td>
+</tr>
+<tr>
+<td>Structural metadata: IDs, parent links, sizes, timestamps, member lists, emails</td>
+<td>Server, plaintext</td>
+<td>Server operator</td>
+</tr>
+<tr>
+<td>Audit log</td>
+<td>Server (hash-chained, signed)</td>
+<td>Admins</td>
+</tr>
+</tbody>
+</table></markdown-accessiblity-table>
+<p><strong>Trust boundary:</strong> the server is assumed <em>honest-but-curious, and possibly compromised</em>. Clients<br>
+are trusted only while unlocked, on the user's own device.</p>
+<h2 id="2-cryptography-packagescoresrccryptots">2. Cryptography (<code class="notranslate">packages/core/src/crypto.ts</code>)</h2>
+<markdown-accessiblity-table><table role="table">
+<thead>
+<tr>
+<th>Purpose</th>
+<th>Primitive</th>
+<th>Parameters</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Password stretching</td>
+<td>Argon2id (<code class="notranslate">crypto_pwhash</code>)</td>
+<td>128 MiB, 3 passes, 1 lane (client default). The server rejects anything below 64 MiB / 3 passes</td>
+</tr>
+<tr>
+<td>Key separation</td>
+<td>BLAKE2b KDF (<code class="notranslate">crypto_kdf_derive_from_key</code>)</td>
+<td>Context <code class="notranslate">vnasauth</code>: subkey 1 = auth key, 2 = wrap key</td>
+</tr>
+<tr>
+<td>Symmetric encryption</td>
+<td>XChaCha20-Poly1305 (IETF AEAD)</td>
+<td>256-bit keys, random 192-bit nonces (safe to generate at random), versioned envelope <code class="notranslate">0x01‖nonce‖ct</code></td>
+</tr>
+<tr>
+<td>Sharing</td>
+<td>X25519 sealed boxes (<code class="notranslate">crypto_box_seal</code>)</td>
+<td>Space keyring sealed to each member</td>
+</tr>
+<tr>
+<td>Integrity of files</td>
+<td>Ed25519 signatures over manifests</td>
+<td>Device verifies signer</td>
+</tr>
+<tr>
+<td>Chunk IDs</td>
+<td>Keyed BLAKE2b-256</td>
+<td>Keyed with the item key, so the server cannot confirm known files</td>
+</tr>
+<tr>
+<td>Server-side auth hash</td>
+<td>Argon2id (Go <code class="notranslate">x/crypto/argon2</code>)</td>
+<td>19 MiB, 1 pass. The input is already a 256-bit key</td>
+</tr>
+<tr>
+<td>Server secrets at rest (TOTP seeds)</td>
+<td>AES-256-GCM</td>
+<td>Key in <code class="notranslate">server-keys.json</code> (0600)</td>
+</tr>
+<tr>
+<td>Audit log</td>
+<td>SHA-256 chain + Ed25519</td>
+<td>Per-row signature</td>
+</tr>
+</tbody>
+</table></markdown-accessiblity-table>
+<p><strong>Associated data binds every ciphertext to its role and ID</strong> (<code class="notranslate">vnas:item-meta:&lt;id&gt;</code>,<br>
+<code class="notranslate">vnas:chunk:&lt;item&gt;:&lt;chunk&gt;</code> …), so a malicious server cannot swap one item's ciphertext for another's.</p>
+<h3 id="21-key-hierarchy">2.1 Key hierarchy</h3>
+<pre class="notranslate"><code class="notranslate">password ─Argon2id(salt)─► master ─┬─► authKey  ──► server stores Argon2id(authKey)
+                                   └─► wrapKey  ──► AEAD(AMK)            = wrapped_amk
+recovery key (256-bit, printed) ───┬─► recoveryAuthKey ──► server stores its hash
+                                   └─► recoveryWrapKey ──► AEAD(AMK)     = recovery_wrapped_amk
+AMK ──► AEAD(X25519 sk ‖ Ed25519 sk)                                     = wrapped_private_keys
+X25519 pk ◄── sealed {epoch: spaceKey…}                                  = space_members.wrapped_space_key
+spaceKey[epoch] ──► AEAD(itemKey)                                        = items.wrapped_item_key
+itemKey ──► AEAD(meta), AEAD(payload), AEAD(chunk), AEAD(manifest)
+</code></pre>
+<h3 id="22-login-is-zero-knowledge">2.2 Login is zero-knowledge</h3>
+<p><code class="notranslate">/prelogin</code> returns the public KDF parameters. Unknown emails get a deterministic fake (HMAC of<br>
+the email), so account existence is not revealed. The client derives <code class="notranslate">authKey</code> and sends only that.<br>
+The server compares <code class="notranslate">Argon2id(authKey)</code> in constant time. A database leak lets an attacker<br>
+brute-force passwords only at the full client Argon2id cost, per user.</p>
+<blockquote>
+<p><strong>Residual risk / upgrade path:</strong> an aPAKE (OPAQUE, RFC 9807) would remove even the offline-guess<br>
+oracle that the stored hash gives a server attacker. It is planned for phase 3; the KDF/auth split<br>
+already isolates it to one module.</p>
+</blockquote>
+<h3 id="23-password-change-and-recovery">2.3 Password change and recovery</h3>
+<p>Changing the password re-wraps the AMK; no data is re-encrypted, and other sessions are revoked.<br>
+Recovery uses the printed 256-bit recovery key and still requires the TOTP code or an MFA<br>
+recovery code when MFA is enabled. <strong>There is no admin password reset by design:</strong> an admin who<br>
+could reset passwords could read data.</p>
+<h3 id="24-sharing-and-key-substitution">2.4 Sharing and key substitution</h3>
+<p>A malicious server could hand a sharer an attacker's public key. Clients show a <strong>key fingerprint</strong><br>
+(Settings) for out-of-band comparison before sharing sensitive vaults. Planned: key transparency<br>
+log / TOFU pinning with change warnings (phase 3).</p>
+<h3 id="25-key-rotation-and-revocation">2.5 Key rotation and revocation</h3>
+<ul>
+<li><strong>Remove a member:</strong> the owner's client creates epoch <em>n+1</em>, re-seals the full keyring to the remaining<br>
+members, and re-encrypts space metadata. New content uses the new epoch. Old content stays readable<br>
+by current members. Re-wrapping old item keys is lazy, and full re-encryption is optional for files<br>
+the removed member could have cached.</li>
+<li><strong>Lost device:</strong> <code class="notranslate">Settings → Devices → Revoke</code> kills its sessions instantly. If the device had the<br>
+AMK in its keystore, change the password, which re-wraps the AMK and signs out all devices.</li>
+<li><strong>Compromised account password:</strong> change it. Rotate keys of shared spaces if exposure is suspected.</li>
+<li><strong>Server keys</strong> (<code class="notranslate">server-keys.json</code>): rotation re-seals TOTP secrets. Audit-key rotation starts a new<br>
+chain segment (the old public key is retained for verification).</li>
+</ul>
+<h2 id="3-authentication-and-authorization">3. Authentication and authorization</h2>
+<ul>
+<li><strong>Factors:</strong> password (as above); TOTP (RFC 6238, ±1 step, step-replay rejected, 10 single-use recovery<br>
+codes); <strong>WebAuthn/passkeys planned for phase 2.</strong></li>
+<li><strong>Sessions:</strong> 256-bit random bearer tokens. Only the SHA-256 hash is stored. 30-day absolute and<br>
+14-day idle expiry. The token is rotated after MFA (no session fixation). A half-authenticated MFA<br>
+session can only call <code class="notranslate">/auth/mfa/verify</code>, and wrapped keys are released only after all factors pass.</li>
+<li><strong>Brute force:</strong> per-IP and per-account token buckets (<code class="notranslate">VNAS_AUTH_RATE_PER_MIN</code>, default 10/min), plus<br>
+exponential account lockout after 5 failures (capped at 1 h), plus alerting.</li>
+<li><strong>RBAC:</strong></li>
+</ul>
+<markdown-accessiblity-table><table role="table">
+<thead>
+<tr>
+<th>Global role</th>
+<th>Can</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code class="notranslate">admin</code></td>
+<td>Everything a user can, plus manage users, roles, quotas, invites, groups and the audit log. <strong>Cannot decrypt anyone's data</strong></td>
+</tr>
+<tr>
+<td><code class="notranslate">user</code></td>
+<td>Create spaces, share, create links</td>
+</tr>
+<tr>
+<td><code class="notranslate">readonly</code></td>
+<td>Read spaces shared with them; every write is refused server-side</td>
+</tr>
+<tr>
+<td><code class="notranslate">guest</code></td>
+<td>Use only spaces shared with them; cannot create spaces, share, look up users, or create links</td>
+</tr>
+</tbody>
+</table></markdown-accessiblity-table>
+<markdown-accessiblity-table><table role="table">
+<thead>
+<tr>
+<th>Space role</th>
+<th>Can</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code class="notranslate">owner</code></td>
+<td>Manage members, rotate keys, delete the space</td>
+</tr>
+<tr>
+<td><code class="notranslate">editor</code></td>
+<td>Create, update and trash items; upload; create links</td>
+</tr>
+<tr>
+<td><code class="notranslate">viewer</code></td>
+<td>Read</td>
+</tr>
+</tbody>
+</table></markdown-accessiblity-table>
+<p>Every handler resolves the caller's access to the target space <strong>first</strong>. Unknown and forbidden<br>
+both return 404, so IDs cannot be probed. Vault entries are excluded from public links.</p>
+<h2 id="4-threat-model-and-controls">4. Threat model and controls</h2>
+<markdown-accessiblity-table><table role="table">
+<thead>
+<tr>
+<th>#</th>
+<th>Threat</th>
+<th>Controls</th>
+<th>Residual risk</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>T1</td>
+<td><strong>Network attacker</strong> (MITM, sniffing)</td>
+<td>TLS 1.2+/1.3 via Caddy (auto-renewing certificates); HSTS 2 years; everything already E2E-encrypted inside TLS; share-link keys only in the URL <code class="notranslate">#fragment</code> (never sent)</td>
+<td>Initial TOFU on the server URL</td>
+</tr>
+<tr>
+<td>T2</td>
+<td><strong>Compromised server or host / malicious admin</strong></td>
+<td>Zero-knowledge E2EE; AAD binding; signed manifests; chunk ID ↔ plaintext verification; truncation checks; no admin reset; audit log signed + hash-chained</td>
+<td>Metadata visible (sizes, timing, sharing graph); availability (deletion); public-key substitution (§2.4); serving malicious <em>web</em> JavaScript — prefer desktop/mobile apps, which are signed and pinned</td>
+</tr>
+<tr>
+<td>T3</td>
+<td><strong>Stolen or leaked backup</strong></td>
+<td>Same as T2, plus restic encryption</td>
+<td>Offline password guessing at Argon2id cost: use strong passphrases</td>
+</tr>
+<tr>
+<td>T4</td>
+<td><strong>Malicious user account</strong></td>
+<td>RBAC at every endpoint; 404 on foreign IDs; strict ID validation (hex only), so blob keys can't traverse paths; quotas; rate limits; body size caps; JSON <code class="notranslate">DisallowUnknownFields</code></td>
+<td>Abuse inside spaces they were legitimately given</td>
+</tr>
+<tr>
+<td>T5</td>
+<td><strong>Lost / stolen device</strong></td>
+<td>Keys live only in memory while unlocked; web auto-locks after 15 min idle; mobile locks on background; optional keystore storage gated by biometrics (<code class="notranslate">WHEN_PASSCODE_SET_THIS_DEVICE_ONLY</code>, never backed up); local cache is ciphertext; remote device revoke</td>
+<td>A device stolen while unlocked; malware on an unlocked device</td>
+</tr>
+<tr>
+<td>T6</td>
+<td><strong>Local attacker with partial access</strong> (other OS user, forensic copy)</td>
+<td>Cache is ciphertext; server data dir 0700/0600; systemd sandbox; distroless non-root, read-only container</td>
+<td>Root on an unlocked device</td>
+</tr>
+<tr>
+<td>T7</td>
+<td><strong>Web attacks</strong>: XSS, CSRF, clickjacking, SQLi, SSRF</td>
+<td>Strict CSP (no inline script, no eval); React escaping; bearer tokens (no ambient cookies) + Origin check means no CSRF; <code class="notranslate">frame-ancestors 'none'</code> + XFO DENY; <strong>only parameterized SQL</strong>; the server never fetches user-supplied URLs (the only outbound call is the admin-configured alert webhook)</td>
+<td>—</td>
+</tr>
+<tr>
+<td>T8</td>
+<td><strong>Supply chain</strong></td>
+<td>Pinned versions + lockfiles; Dependabot; govulncheck, gosec, OSV-Scanner, Trivy, Semgrep, npm audit in CI (nightly too); minimal dependencies; SBOM + SLSA provenance; cosign-signed images and checksums; Tauri updater verifies minisign signatures; Expo OTA updates code-signed</td>
+<td>A compromised maintainer key: use protected tags + 2-person review</td>
+</tr>
+<tr>
+<td>T9</td>
+<td><strong>AI-specific</strong>: prompt injection, cross-user leakage, exfiltration to cloud</td>
+<td>The agent is a separate least-privilege account; retrieval filtered by space; secrets never indexed; documents wrapped as untrusted data; no write tools; cloud use off by default, per-space allow-list, reversible redaction</td>
+<td>A model hallucinating — answers cite sources</td>
+</tr>
+<tr>
+<td>T10</td>
+<td><strong>Account takeover by brute force / credential stuffing</strong></td>
+<td>Argon2id, rate limits, lockout, TOTP, alerts on failure bursts</td>
+<td>—</td>
+</tr>
+<tr>
+<td>T11</td>
+<td><strong>Audit tampering</strong></td>
+<td>Append-only triggers, hash chain, per-row Ed25519 signatures, <code class="notranslate">vnasd audit-verify</code></td>
+<td>Root can delete the whole tail; ship logs off-box (§6)</td>
+</tr>
+</tbody>
+</table></markdown-accessiblity-table>
+<h2 id="5-transport-and-http-hardening-serverinternalhttpx">5. Transport and HTTP hardening (<code class="notranslate">server/internal/httpx</code>)</h2>
+<p><code class="notranslate">Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' blob: data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'</code>,<br>
+plus <code class="notranslate">Strict-Transport-Security</code>, <code class="notranslate">X-Content-Type-Options: nosniff</code>, <code class="notranslate">X-Frame-Options: DENY</code>, <code class="notranslate">Referrer-Policy: no-referrer</code>,<br>
+<code class="notranslate">Permissions-Policy</code>, <code class="notranslate">Cross-Origin-Opener-Policy</code>/<code class="notranslate">-Resource-Policy: same-origin</code>, and <code class="notranslate">Cache-Control: no-store</code> on the API.<br>
+Server timeouts (header 10 s, read/write 5 min, idle 2 min), header cap 32 KiB, body cap = chunk size + 64 KiB.</p>
+<h2 id="6-logging-and-audit">6. Logging and audit</h2>
+<p>Audited actions include: sign-in success and failure, MFA events, recovery, password change, device<br>
+enrol/revoke, item create/update/trash/purge/restore, direct vault-entry reads (<code class="notranslate">GET /items/{id}</code>;<br>
+bulk sync of a vault is not logged per entry), file versions, shares,<br>
+key rotations, link create/open/revoke, and all admin actions. Rows carry actor, device, IP and<br>
+target <strong>IDs, never names or content</strong> (names are encrypted anyway).</p>
+<p>Tamper resistance: SQLite triggers reject UPDATE/DELETE; each row stores <code class="notranslate">SHA-256(prev_hash ‖ row)</code><br>
+and an Ed25519 signature. <code class="notranslate">vnasd audit-verify</code> checks the whole chain. For defense against a fully<br>
+compromised host, also forward rows to a separate append-only sink (for example a remote syslog or a<br>
+WORM S3 bucket); this is planned for phase 2.</p>
+<h2 id="7-updates-and-patching">7. Updates and patching</h2>
+<ul>
+<li><strong>Semantic versioning.</strong> Security fixes ship as PATCH releases with a <code class="notranslate">SECURITY</code> changelog entry and a GitHub advisory.</li>
+<li><strong>Server:</strong> <code class="notranslate">docker compose pull &amp;&amp; docker compose up -d</code> (or replace the binary). Migrations run automatically<br>
+and are forward-only, so <strong>back up before upgrading</strong>. Roll back by restoring the pre-upgrade snapshot (§DEPLOYMENT 5).</li>
+<li><strong>Desktop:</strong> the Tauri updater downloads <code class="notranslate">latest.json</code>, verifies the minisign signature against the public key<br>
+compiled into the app, and installs. Installers are additionally Authenticode / Apple-notarized when certificates are configured.</li>
+<li><strong>Mobile:</strong> store releases, and signed Expo OTA updates for JS-only fixes (<code class="notranslate">codeSigningCertificate</code>).</li>
+<li><strong>Web:</strong> the service worker is network-first, so a patched server delivers patched UI on the next load.</li>
+<li><strong>Dependencies:</strong> Dependabot weekly, nightly CI vulnerability scans, and CI fails on HIGH/CRITICAL.</li>
+</ul>
+<h2 id="8-known-limitations-by-design-or-pending">8. Known limitations (by design or pending)</h2>
+<ul>
+<li>Structural metadata is visible to the server (see T2). Padding of chunk sizes is a possible future hardening step.</li>
+<li>The web client trusts the server to serve honest JavaScript. Use desktop/mobile apps for maximum assurance.</li>
+<li>WebAuthn, OPAQUE, key transparency and off-box audit shipping are pending (see ROADMAP).</li>
+<li>Full-text search runs on clients only.</li>
+</ul>
+<h2 id="9-reporting-vulnerabilities">9. Reporting vulnerabilities</h2>
+<p>Report privately through GitHub: <a href="https://github.com/Mangesh-Bhattacharya/vnas-site/security/advisories/new">open a private security advisory</a>.<br>
+Only the maintainers can see it. Please don't open a public issue for security problems.<br>
+We aim to acknowledge reports within 72 h and ship fixes for critical issues within 14 days.</p></article></main>
+<footer class="wrap foot">Licensed AGPL-3.0-or-later · vNAS is pre-1.0 software. Keep backups. · <a href="../">Home</a></footer>
+</body>
+</html>

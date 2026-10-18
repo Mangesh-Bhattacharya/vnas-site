@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Roadmap · vNAS</title>
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect x='3' y='3' width='10' height='10' rx='3' fill='%23d36000'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<script>try { var t = localStorage.getItem("vnas-theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch (e) {}</script>
+<link rel="stylesheet" href="docs.css">
+</head>
+<body>
+<header class="bar"><div class="wrap">
+  <a class="logo" href="../"><i></i>vNAS</a>
+  <nav aria-label="Documentation"><a href="OPERATOR_MANUAL.html">Operator manual</a><a href="DEPLOYMENT.html">Deployment</a><a href="SECURITY.html">Security model</a><a href="ARCHITECTURE.html">Architecture</a><a href="API.html">API</a><a href="SYNC.html">Sync & offline</a><a href="AI.html">AI assistant</a><a href="ROADMAP.html" aria-current="page">Roadmap</a></nav>
+</div></header>
+<main class="wrap"><article class="doc"><h1 id="roadmap">Roadmap</h1>
+<p>Ordered by dependency and risk: security foundations first, then reach, then scale.<br>
+✅ = implemented and tested in this repository · 🧩 = scaffolded · ⬜ = planned.</p>
+<h2 id="phase-1--secure-mvp-foundation-everything-else-depends-on">Phase 1 — Secure MVP (foundation everything else depends on)</h2>
+<markdown-accessiblity-table><table role="table">
+<thead>
+<tr>
+<th></th>
+<th>Item</th>
+<th>Depends on</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>✅</td>
+<td>Key hierarchy, Argon2id, AEAD with AAD binding, sealed-box sharing, signed manifests (<code class="notranslate">@vnas/core</code>)</td>
+<td>—</td>
+</tr>
+<tr>
+<td>✅</td>
+<td>Zero-knowledge sign-up, login, recovery key, password change</td>
+<td>crypto</td>
+</tr>
+<tr>
+<td>✅</td>
+<td>TOTP MFA with replay protection and recovery codes</td>
+<td>auth</td>
+</tr>
+<tr>
+<td>✅</td>
+<td>Sessions, device enrolment and revocation, rate limits, lockout</td>
+<td>auth</td>
+</tr>
+<tr>
+<td>✅</td>
+<td>Spaces, RBAC (global + per-space), invites, quotas, groups</td>
+<td>auth</td>
+</tr>
+<tr>
+<td>✅</td>
+<td>Items: files (chunked, versioned, deduped, resumable), folders, notes, vault entries, records, trash</td>
+<td>spaces</td>
+</tr>
+<tr>
+<td>✅</td>
+<td>Change feed + offline outbox sync + conflict policies</td>
+<td>items</td>
+</tr>
+<tr>
+<td>✅</td>
+<td>E2EE share links; key rotation on unshare</td>
+<td>items</td>
+</tr>
+<tr>
+<td>✅</td>
+<td>Signed, hash-chained audit log; health, metrics, webhook alerts</td>
+<td>—</td>
+</tr>
+<tr>
+<td>✅</td>
+<td>Web client / PWA with offline unlock</td>
+<td>core</td>
+</tr>
+<tr>
+<td>✅</td>
+<td>Docker/Compose/Caddy, systemd, K8s, restic backups, CI security scanning, signed releases</td>
+<td>server</td>
+</tr>
+<tr>
+<td><strong>Exit criteria</strong></td>
+<td>External crypto review of <code class="notranslate">crypto.ts</code> + auth flows; restore drill passes</td>
+<td></td>
+</tr>
+</tbody>
+</table></markdown-accessiblity-table>
+<h2 id="phase-2--every-device--68-weeks">Phase 2 — Every device (≈ 6–8 weeks)</h2>
+<markdown-accessiblity-table><table role="table">
+<thead>
+<tr>
+<th></th>
+<th>Item</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>🧩</td>
+<td>Desktop (Tauri): keychain unlock, signed auto-update. Next: first build, tray icon, folder sync to the local filesystem (watcher → outbox)</td>
+</tr>
+<tr>
+<td>🧩</td>
+<td>Mobile (Expo): biometric unlock, SQLite cache, background sync. Next: first device build, verify <code class="notranslate">react-native-libsodium</code> API coverage, camera upload, share-sheet intake, OS autofill provider for the vault</td>
+</tr>
+<tr>
+<td>⬜</td>
+<td><strong>WebAuthn / passkeys</strong> (server: <code class="notranslate">go-webauthn</code>; also PRF-based unlock)</td>
+</tr>
+<tr>
+<td>⬜</td>
+<td>Server-sent events for instant sync; conflict review / diff UI</td>
+</tr>
+<tr>
+<td>⬜</td>
+<td>Full-text search: SQLite FTS5 on desktop/mobile, MiniSearch on web</td>
+</tr>
+<tr>
+<td>⬜</td>
+<td>Off-box audit shipping (syslog / WORM S3)</td>
+</tr>
+<tr>
+<td>⬜</td>
+<td>Browser extension for vault autofill</td>
+</tr>
+</tbody>
+</table></markdown-accessiblity-table>
+<h2 id="phase-3--assurance--6-weeks">Phase 3 — Assurance (≈ 6 weeks)</h2>
+<markdown-accessiblity-table><table role="table">
+<thead>
+<tr>
+<th></th>
+<th>Item</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>⬜</td>
+<td>OPAQUE aPAKE login (removes the offline-guess oracle on server compromise)</td>
+</tr>
+<tr>
+<td>⬜</td>
+<td>Key transparency / TOFU pinning of contacts' public keys with change warnings</td>
+</tr>
+<tr>
+<td>⬜</td>
+<td>Chunk-size padding to reduce metadata leakage</td>
+</tr>
+<tr>
+<td>⬜</td>
+<td>Lazy re-encryption job after member removal (re-wrap item keys to the new epoch)</td>
+</tr>
+<tr>
+<td>⬜</td>
+<td>Hardware keys for unlock (YubiKey HMAC/PRF, TPM-sealed key on Windows/Linux)</td>
+</tr>
+<tr>
+<td>⬜</td>
+<td>Reproducible builds; third-party penetration test; bug bounty</td>
+</tr>
+</tbody>
+</table></markdown-accessiblity-table>
+<h2 id="phase-4--scale-and-integrations">Phase 4 — Scale and integrations</h2>
+<markdown-accessiblity-table><table role="table">
+<thead>
+<tr>
+<th></th>
+<th>Item</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>🧩</td>
+<td>AI agent: local RAG, redaction, coaching (✅). Next: persistent encrypted vector index (sqlite-vec), PDF/Office/OCR extractors, scheduled insight digests</td>
+</tr>
+<tr>
+<td>⬜</td>
+<td>S3-compatible blob backend (MinIO/Garage/B2); PostgreSQL store for multi-node HA</td>
+</tr>
+<tr>
+<td>⬜</td>
+<td>WebDAV gateway on the client side (mount the decrypted drive locally)</td>
+</tr>
+<tr>
+<td>⬜</td>
+<td>Photo timeline, thumbnails generated client-side</td>
+</tr>
+<tr>
+<td>⬜</td>
+<td>Import from Google Drive / OneDrive / Bitwarden / KeePass exports</td>
+</tr>
+<tr>
+<td>⬜</td>
+<td>Structured records UI (schema builder, table views)</td>
+</tr>
+</tbody>
+</table></markdown-accessiblity-table>
+<h2 id="milestones">Milestones</h2>
+<ol>
+<li><strong>M1 (done here):</strong> a tested core, server and web client, deployable via Compose.</li>
+<li><strong>M2:</strong> signed desktop builds for all three OSes and Android APK; WebAuthn.</li>
+<li><strong>M3:</strong> external security review complete; v1.0 release.</li>
+<li><strong>M4:</strong> iOS App Store / TestFlight, F-Droid, S3 backend.</li>
+</ol></article></main>
+<footer class="wrap foot">Licensed AGPL-3.0-or-later · vNAS is pre-1.0 software. Keep backups. · <a href="../">Home</a></footer>
+</body>
+</html>

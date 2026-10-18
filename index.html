@@ -1,0 +1,641 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>vNAS — private cloud storage you host</title>
+<meta name="description" content="Free, open-source, end-to-end encrypted storage for files, notes and passwords. Runs on your own hardware, works offline, with a private AI assistant.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect x='3' y='3' width='10' height='10' rx='3' fill='%23d36000'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<script>
+  // Apply the saved theme before first paint. Storage can be unavailable (private mode), so fail quietly.
+  try { var t = localStorage.getItem("vnas-theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch (e) {}
+</script>
+<style>
+:root {
+  --surface: #fbfaf9; --raised: #fff; --sunken: #f0eeec; --muted: #f6f5f3; --tint: #13110f0f;
+  --text: #13110f; --text-muted: #656360; --text-faint: #878683;
+  --border: #dfdedc; --border-emph: #c6c4c1; --border-strong: #adaaa7;
+  --primary: #d36000; --primary-hover: #b65400; --on-primary: #fff; --primary-subtle: #ffebcf; --primary-text: #b35100;
+  --success: #2e9e52; --on-success: #fff; --success-text: #1c8742;
+  --info-subtle: #d7efff; --info-text: #0079b6;
+  --shadow-card: 0 1px 3px 0 #0000000f, 0 1px 2px -1px #0000000f;
+  --shadow-float: 0 2px 4px #00000014, 0 14px 30px #00000024;
+  --radius-card: 10px; --radius-field: 8px;
+  --stack: .25rem; --snug: .5rem; --cozy: .75rem; --roomy: 1.25rem; --page: 6rem;
+  --ease: cubic-bezier(.22, 1, .36, 1);
+  --sans: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --surface: #0a0907; --raised: #13110f; --sunken: #050403; --muted: #1c1a18; --tint: #f0eeec12;
+    --text: #f0eeec; --text-muted: #918f8c; --text-faint: #656361;
+    --border: #2a2926; --border-emph: #3f3d3a; --border-strong: #575552;
+    --primary: #fc9f30; --primary-hover: #ffb565; --on-primary: #0f0d0b; --primary-subtle: #4c2900; --primary-text: #fba952;
+    --success: #54b66e; --on-success: #0f0d0b; --success-text: #6cc581;
+    --info-subtle: #042c43; --info-text: #55b8f8;
+    --shadow-card: 0 1px 3px 0 #00000057, 0 1px 2px -1px #00000057;
+    --shadow-float: 0 2px 4px #00000057, 0 12px 26px #0000006b;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --surface: #0a0907; --raised: #13110f; --sunken: #050403; --muted: #1c1a18; --tint: #f0eeec12;
+  --text: #f0eeec; --text-muted: #918f8c; --text-faint: #656361;
+  --border: #2a2926; --border-emph: #3f3d3a; --border-strong: #575552;
+  --primary: #fc9f30; --primary-hover: #ffb565; --on-primary: #0f0d0b; --primary-subtle: #4c2900; --primary-text: #fba952;
+  --success: #54b66e; --on-success: #0f0d0b; --success-text: #6cc581;
+  --info-subtle: #042c43; --info-text: #55b8f8;
+  --shadow-card: 0 1px 3px 0 #00000057, 0 1px 2px -1px #00000057;
+  --shadow-float: 0 2px 4px #00000057, 0 12px 26px #0000006b;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-padding-top: 72px; }
+body { margin: 0; background: var(--surface); color: var(--text); font: 16px/1.5 var(--sans); -webkit-font-smoothing: antialiased; overflow-x: clip; }
+img, svg { display: block; }
+a { color: inherit; }
+p { margin: 0; }
+h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -0.025em; line-height: 1.1; }
+:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; border-radius: 4px; }
+.prose-link { text-decoration: underline dashed var(--border-strong); text-underline-offset: 4px; }
+.prose-link:hover { color: var(--text); text-decoration-color: var(--text); }
+
+.wrap { width: 100%; max-width: 1240px; margin: 0 auto; padding: 0 var(--roomy); }
+@media (max-width: 640px) { .wrap { padding: 0 16px; } }
+
+/* Marquee status banner */
+.banner { position: relative; height: 32px; display: flex; align-items: center; overflow: hidden; background: var(--muted); color: var(--text-muted); border-bottom: 1px solid var(--tint);
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent); mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent); }
+.banner-track { display: flex; width: max-content; animation: marquee 60s linear infinite; }
+.banner:hover .banner-track { animation-play-state: paused; }
+.banner-group { display: flex; gap: 4rem; padding-right: 4rem; }
+.banner span { white-space: nowrap; font-size: 12px; letter-spacing: .02em; }
+@keyframes marquee { to { transform: translateX(-50%); } }
+
+/* Header */
+header { position: sticky; top: 0; z-index: 30; background: var(--surface); transition: box-shadow .2s var(--ease); }
+header.scrolled { box-shadow: 0 1px 0 var(--tint); }
+.head { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; height: 60px; gap: var(--cozy); }
+.logo { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; letter-spacing: -0.02em; font-size: 17px; text-decoration: none; }
+.logo i { width: 12px; height: 12px; border-radius: 3.5px; background: var(--primary); }
+nav.primary { display: flex; gap: 2px; }
+nav.primary a { font-size: 14px; color: var(--text-muted); text-decoration: none; padding: 6px 10px; border-radius: 6px; transition: color .12s var(--ease), background-color .12s var(--ease); }
+nav.primary a:hover, nav.primary a.on { color: var(--text); background: var(--tint); }
+.head-right { display: flex; justify-content: flex-end; align-items: center; gap: var(--snug); }
+.progress { position: absolute; left: 0; bottom: 0; height: 1px; background: var(--text); width: 0; }
+@media (max-width: 900px) { .head { grid-template-columns: 1fr auto; } nav.primary { display: none; } }
+
+/* Buttons */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: var(--snug); height: 36px; padding: 0 16px; border-radius: var(--radius-field);
+  font: 500 14px/1 var(--sans); text-decoration: none; cursor: pointer; border: 1px solid var(--btn-border, var(--btn-bg)); background: var(--btn-bg); color: var(--btn-fg);
+  transition: background-color .12s var(--ease), border-color .12s var(--ease), color .12s var(--ease); }
+.btn:hover { background: color-mix(in oklab, var(--btn-bg), var(--text) 10%); }
+.btn-primary { --btn-bg: var(--primary); --btn-fg: var(--on-primary); }
+.btn-primary:hover { background: var(--primary-hover); border-color: var(--primary-hover); }
+.btn-secondary { --btn-bg: transparent; --btn-fg: var(--text); --btn-border: var(--border); }
+.btn-secondary:hover { background: var(--tint); }
+.btn-sm { height: 28px; padding: 0 12px; font-size: 12px; gap: var(--stack); }
+.btn-icon { width: 36px; padding: 0; }
+.btn svg { width: 16px; height: 16px; }
+
+/* Section scaffolding */
+main { display: flex; flex-direction: column; gap: var(--page); padding-bottom: var(--page); }
+section { scroll-margin-top: 72px; }
+.eyebrow { font-size: 12px; font-weight: 500; letter-spacing: .14em; text-transform: uppercase; color: var(--primary-text); }
+.sec-head { display: flex; flex-direction: column; gap: var(--snug); margin-bottom: var(--roomy); }
+.sec-title-row { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: var(--cozy); }
+.sec-head h2 { font-size: clamp(24px, 3vw, 32px); }
+.sec-head .lede { font-size: 14px; color: var(--text-muted); max-width: 640px; padding-top: var(--stack); }
+
+/* Hero with bracket corners */
+.hero { position: relative; display: grid; grid-template-columns: 1fr 1fr; align-items: center; gap: var(--roomy); padding: var(--roomy); margin-top: var(--page); }
+.corner { position: absolute; width: 12px; height: 12px; border-color: var(--border); border-style: solid; pointer-events: none; }
+.corner.tl { top: 0; left: 0; border-width: 1px 0 0 1px; } .corner.tr { top: 0; right: 0; border-width: 1px 1px 0 0; }
+.corner.bl { bottom: 0; left: 0; border-width: 0 0 1px 1px; } .corner.br { bottom: 0; right: 0; border-width: 0 1px 1px 0; }
+.hero-copy { display: flex; flex-direction: column; gap: var(--roomy); max-width: 600px; }
+.hero h1 { font-size: clamp(40px, 6vw, 72px); letter-spacing: -0.035em; }
+.hero h1 em { font-style: normal; color: var(--text-faint); }
+.hero p.lead { color: var(--text-muted); line-height: 1.7; max-width: 62ch; }
+.actions { display: flex; flex-wrap: wrap; gap: var(--snug); align-items: center; }
+@media (max-width: 900px) { .hero { grid-template-columns: 1fr; margin-top: 2.5rem; } .hero-visual { order: 2; } }
+
+/* Hero product mock */
+.hero-visual { position: relative; aspect-ratio: 1 / 1; max-height: 620px; display: grid; place-items: center; }
+.halo { position: absolute; inset: 6%; border-radius: 50%; background: radial-gradient(closest-side, color-mix(in oklab, var(--primary) 18%, transparent), transparent); filter: blur(10px); }
+.grid-bg { position: absolute; inset: 0; background-image: linear-gradient(var(--tint) 1px, transparent 1px), linear-gradient(90deg, var(--tint) 1px, transparent 1px); background-size: 32px 32px;
+  -webkit-mask-image: radial-gradient(closest-side, #000, transparent); mask-image: radial-gradient(closest-side, #000, transparent); }
+.window { position: relative; width: min(92%, 520px); background: var(--raised); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow-float); overflow: hidden; transform: rotate(-1.5deg); }
+.win-bar { display: flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border-bottom: 1px solid var(--border); background: var(--surface); }
+.win-bar b { width: 9px; height: 9px; border-radius: 50%; background: var(--border-emph); }
+.win-bar .url { margin-left: 10px; font: 11px var(--mono); color: var(--text-faint); display: flex; align-items: center; gap: 6px; }
+.win-body { display: grid; grid-template-columns: 112px 1fr; min-height: 300px; }
+.win-side { border-right: 1px solid var(--border); padding: 12px 8px; display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--text-muted); }
+.win-side span { padding: 5px 8px; border-radius: 6px; }
+.win-side span.on { background: var(--tint); color: var(--text); }
+.win-main { padding: 12px 14px; display: flex; flex-direction: column; gap: 2px; font-size: 12px; min-width: 0; }
+.win-main .crumb { color: var(--text-faint); margin-bottom: 6px; }
+.file { display: grid; grid-template-columns: 18px 1fr auto; align-items: center; gap: 8px; padding: 7px 6px; border-bottom: 1px solid var(--border); }
+.file:last-child { border-bottom: 0; }
+.file i { width: 14px; height: 16px; border-radius: 3px; background: var(--sunken); border: 1px solid var(--border-emph); }
+.file i.dir { height: 12px; border-radius: 2px 5px 3px 3px; background: var(--primary-subtle); border-color: color-mix(in oklab, var(--primary) 40%, transparent); }
+.file span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file small { color: var(--text-faint); font-family: var(--mono); font-size: 10px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; font: 500 10px/1 var(--sans); letter-spacing: .1em; text-transform: uppercase; padding: 4px 7px; border: 1px solid transparent; white-space: nowrap; }
+.chip-ok { background: var(--success); color: var(--on-success); }
+.chip-muted { background: var(--muted); color: var(--text); }
+.chip-info { background: var(--info-subtle); color: var(--info-text); }
+.chip-accent { background: var(--primary-subtle); color: var(--primary-text); }
+.dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.float-card { position: absolute; background: var(--raised); border: 1px solid var(--border); border-radius: var(--radius-card); box-shadow: var(--shadow-float); padding: 10px 12px; font-size: 12px; display: flex; flex-direction: column; gap: 4px; }
+.float-card .k { font: 10px var(--mono); color: var(--text-faint); }
+.fc-1 { right: 0; top: 12%; transform: rotate(2deg); }
+.fc-2 { left: 0; bottom: 12%; transform: rotate(-2deg); max-width: 220px; }
+@media (max-width: 640px) { .fc-1, .fc-2 { display: none; } .win-body { grid-template-columns: 1fr; } .win-side { display: none; } }
+
+/* Stats row */
+.stats { display: grid; grid-template-columns: repeat(6, 1fr); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.stat { padding: var(--roomy); display: flex; flex-direction: column; gap: 4px; border-left: 1px solid var(--border); }
+.stat:first-child { border-left: 0; }
+.stat b { font-size: clamp(26px, 3vw, 36px); font-weight: 600; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+.stat span { font-size: 13px; color: var(--text-muted); }
+@media (max-width: 900px) { .stats { grid-template-columns: repeat(3, 1fr); } .stat:nth-child(4) { border-left: 0; } .stat:nth-child(n+4) { border-top: 1px solid var(--border); } }
+@media (max-width: 520px) { .stats { grid-template-columns: repeat(2, 1fr); } .stat { border-left: 0 !important; border-top: 1px solid var(--border); } .stat:nth-child(even) { border-left: 1px solid var(--border) !important; } .stat:nth-child(-n+2) { border-top: 0; } }
+
+/* Cards */
+.card { position: relative; height: 100%; background: var(--raised); border: 1px solid var(--border); border-radius: var(--radius-card); box-shadow: var(--shadow-card); padding: var(--roomy);
+  display: flex; flex-direction: column; gap: var(--cozy); transition: border-color .15s var(--ease), transform .2s var(--ease); }
+a.card { text-decoration: none; }
+a.card:hover { border-color: var(--border-strong); transform: translateY(-2px); }
+.card h3 { font-size: 18px; }
+.card p { font-size: 14px; color: var(--text-muted); }
+.card hr { width: 100%; height: 1px; margin: 0; border: 0; background: var(--border); }
+.card .best { color: var(--text-faint); }
+.cards-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--cozy); }
+@media (max-width: 900px) { .cards-3 { grid-template-columns: 1fr; } }
+.ficon { width: 36px; height: 36px; border-radius: 8px; display: grid; place-items: center; background: var(--muted); border: 1px solid var(--border); color: var(--text); }
+.ficon svg { width: 18px; height: 18px; }
+.tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: auto; padding-top: var(--stack); }
+.tag { font: 11px var(--mono); color: var(--text-muted); border: 1px solid var(--border); border-radius: 6px; padding: 2px 6px; }
+
+/* Security split */
+.split { display: grid; grid-template-columns: 5fr 7fr; gap: var(--cozy); }
+@media (max-width: 900px) { .split { grid-template-columns: 1fr; } }
+.chain { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.chain li { display: grid; grid-template-columns: 28px 1fr; gap: var(--cozy); padding: 12px 0; border-bottom: 1px solid var(--border); }
+.chain li:last-child { border-bottom: 0; }
+.chain .n { font: 500 12px var(--mono); color: var(--primary-text); padding-top: 2px; }
+.chain strong { font-weight: 600; display: block; font-size: 15px; }
+.chain span { font-size: 14px; color: var(--text-muted); }
+.ledger { font: 12px/1.7 var(--mono); background: var(--sunken); border: 1px solid var(--border); border-radius: var(--radius-field); padding: 14px; overflow-x: auto; color: var(--text-muted); white-space: pre; }
+.ledger .hl { color: var(--text); }
+.ledger .ac { color: var(--primary-text); }
+.checks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--snug); }
+.checks li { display: flex; align-items: flex-start; gap: var(--snug); font-size: 15px; }
+.checks svg { width: 14px; height: 14px; margin-top: 5px; flex-shrink: 0; color: var(--success-text); }
+.checks.x svg { color: var(--text-faint); }
+
+/* Chat mock */
+.chat { display: flex; flex-direction: column; gap: 10px; font-size: 14px; }
+.bubble { max-width: 85%; padding: 10px 14px; border-radius: 12px; border: 1px solid var(--border); background: var(--raised); }
+.bubble.me { align-self: flex-end; background: var(--primary); color: var(--on-primary); border-color: var(--primary); }
+.bubble .cite { display: block; margin-top: 6px; font: 11px var(--mono); color: var(--text-faint); }
+.redact { font: 12px var(--mono); padding: 1px 5px; border-radius: 4px; background: var(--primary-subtle); color: var(--primary-text); }
+
+/* Setup modes ("Find the setup that fits") */
+.mode.unavailable { opacity: .55; }
+.mode .top { display: flex; flex-wrap: wrap; gap: var(--snug); justify-content: space-between; align-items: center; }
+.mode .cta { display: flex; flex-wrap: wrap; gap: var(--snug); margin-top: auto; padding-top: var(--stack); }
+.mode-glow { position: relative; isolation: isolate; height: 100%; }
+.mode-glow::before { content: ""; position: absolute; inset: -18px; z-index: -1; border-radius: 24px; pointer-events: none;
+  background: radial-gradient(60% 50% at 50% 0%, color-mix(in oklab, var(--primary) 22%, transparent), transparent 70%); opacity: .8; }
+pre.cmd { margin: 0; font: 12px/1.6 var(--mono); background: var(--sunken); border: 1px solid var(--border); border-radius: var(--radius-field); padding: 10px 12px; overflow-x: auto; color: var(--text); }
+
+/* Roadmap timeline */
+.timeline { list-style: none; margin: 0; padding: 0; position: relative; }
+.timeline::before { content: ""; position: absolute; left: 7px; top: 8px; bottom: 8px; width: 1px; background: var(--border); }
+.timeline li { position: relative; display: grid; grid-template-columns: 200px 1fr; gap: var(--roomy); padding: 0 0 var(--roomy) 32px; }
+.timeline li::before { content: ""; position: absolute; left: 0; top: 5px; width: 15px; height: 15px; border-radius: 50%; background: var(--surface); border: 1px solid var(--border-strong); }
+.timeline li.done::before { background: var(--success); border-color: var(--success); }
+.timeline li.now::before { background: var(--primary); border-color: var(--primary); box-shadow: 0 0 0 4px var(--primary-subtle); }
+.timeline .when { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.timeline .when b { font-size: 15px; font-weight: 600; }
+.timeline h3 { font-size: 17px; margin-bottom: 6px; }
+.timeline p { font-size: 14px; color: var(--text-muted); max-width: 70ch; }
+@media (max-width: 640px) { .timeline li { grid-template-columns: 1fr; gap: 6px; } }
+
+/* Footer */
+footer { border-top: 1px solid var(--border); padding: 3rem 0 2rem; }
+.foot { display: grid; grid-template-columns: 2fr repeat(4, 1fr); gap: var(--roomy); }
+.foot h4 { margin: 0 0 10px; font-size: 12px; font-weight: 500; letter-spacing: .12em; text-transform: uppercase; color: var(--text-faint); }
+.foot ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.foot ul a { font-size: 14px; color: var(--text-muted); text-decoration: none; }
+.foot ul a:hover { color: var(--text); }
+.foot p { font-size: 14px; color: var(--text-muted); max-width: 32ch; margin-top: 10px; }
+.legal { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--snug); margin-top: 3rem; font-size: 12px; color: var(--text-faint); }
+@media (max-width: 900px) { .foot { grid-template-columns: repeat(2, 1fr); } .foot > div:first-child { grid-column: 1 / -1; } }
+
+/* Reveal on scroll */
+/* Content is visible at rest; scripts only add a small rise as sections enter. */
+.js .reveal:not(.in) { transform: translateY(10px); }
+.reveal { transition: transform .6s var(--ease); }
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .banner-track { animation: none; flex-wrap: wrap; }
+  .js .reveal:not(.in) { transform: none; }
+  .window, .fc-1, .fc-2 { transform: none; }
+}
+</style>
+</head>
+<body class="no-js">
+
+<div class="banner" role="status" aria-label="Project status">
+  <div class="banner-track">
+    <div class="banner-group">
+      <span>🚧 vNAS is pre-1.0. The server, web app and encryption core are tested. Desktop and mobile builds are next.</span>
+      <span>🔒 Everything is encrypted on your device before it's uploaded. The server only ever stores ciphertext.</span>
+      <span>🧩 Free and open source. No accounts with us, no telemetry, no subscription.</span>
+    </div>
+    <div class="banner-group" aria-hidden="true">
+      <span>🚧 vNAS is pre-1.0. The server, web app and encryption core are tested. Desktop and mobile builds are next.</span>
+      <span>🔒 Everything is encrypted on your device before it's uploaded. The server only ever stores ciphertext.</span>
+      <span>🧩 Free and open source. No accounts with us, no telemetry, no subscription.</span>
+    </div>
+  </div>
+</div>
+
+<header id="top">
+  <div class="wrap head">
+    <a class="logo" href="#top" aria-label="vNAS home"><i></i>vNAS</a>
+    <nav class="primary" aria-label="Sections">
+      <a href="#features">Features</a>
+      <a href="#security">Security</a>
+      <a href="#assistant">Assistant</a>
+      <a href="#setup">Setup</a>
+      <a href="#roadmap">Roadmap</a>
+    </nav>
+    <div class="head-right">
+      <button class="btn btn-secondary btn-icon" id="theme" type="button" aria-label="Switch to dark theme">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M13.5 9.5A5.5 5.5 0 0 1 6.5 2.5a5.5 5.5 0 1 0 7 7Z"/></svg>
+      </button>
+      <a class="btn btn-primary" href="#setup">Get started</a>
+    </div>
+  </div>
+  <div class="progress" id="progress" aria-hidden="true"></div>
+</header>
+
+<main>
+  <section class="wrap" aria-labelledby="hero-title">
+    <div class="hero">
+      <span class="corner tl"></span><span class="corner tr"></span><span class="corner bl"></span><span class="corner br"></span>
+      <div class="hero-copy reveal">
+        <div style="display:flex;flex-direction:column;gap:var(--snug)">
+          <p class="eyebrow">Open-source private cloud</p>
+          <h1 id="hero-title">Your files.<br>Your server.<br><em>Your keys.</em></h1>
+        </div>
+        <p class="lead">vNAS gives you what Google Drive and OneDrive do, on hardware you own: <a class="prose-link" href="#features">files with version history</a>, notes, a password manager and structured records, all synced across Windows, macOS, Linux, iOS and Android. Everything is <a class="prose-link" href="#security">encrypted on your device</a> before it leaves, so even the person running the server can't read it. A <a class="prose-link" href="#assistant">private AI assistant</a> runs alongside on a local model.</p>
+        <div class="actions">
+          <a class="btn btn-primary" href="#setup">Set up your server</a>
+          <a class="btn btn-secondary" href="docs/OPERATOR_MANUAL.html">Read the manual</a>
+          <a class="btn btn-secondary btn-icon" href="https://github.com/Mangesh-Bhattacharya/vnas-site" aria-label="vNAS on GitHub">
+            <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+          </a>
+        </div>
+      </div>
+
+      <div class="hero-visual reveal" aria-hidden="true">
+        <div class="grid-bg"></div>
+        <div class="halo"></div>
+        <div class="window">
+          <div class="win-bar"><b></b><b></b><b></b>
+            <span class="url"><svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><path d="M4 7V5a4 4 0 1 1 8 0v2h1v8H3V7h1Zm2 0h4V5a2 2 0 1 0-4 0v2Z"/></svg>nas.home.arpa/drive</span>
+          </div>
+          <div class="win-body">
+            <div class="win-side"><span class="on">Drive</span><span>Notes</span><span>Passwords</span><span>Assistant</span><span>Settings</span></div>
+            <div class="win-main">
+              <div class="crumb">My drive / Family</div>
+              <div class="file"><i class="dir"></i><span>Taxes 2026</span><small>12 items</small></div>
+              <div class="file"><i class="dir"></i><span>Photos — Lisbon trip</span><small>384 items</small></div>
+              <div class="file"><i></i><span>Lease agreement.pdf</span><small>v4 · 2.1 MB</small></div>
+              <div class="file"><i></i><span>Insurance policy.pdf</span><small>v1 · 880 KB</small></div>
+              <div class="file"><i></i><span>Budget.xlsx</span><small>v17 · 64 KB</small></div>
+              <div class="file"><i></i><span>Recipes.md</span><small>v9 · 6 KB</small></div>
+            </div>
+          </div>
+        </div>
+        <div class="float-card fc-1">
+          <span class="chip chip-ok"><span class="dot"></span>Synced</span>
+          <span class="k">3 devices · 0 pending</span>
+        </div>
+        <div class="float-card fc-2">
+          <span class="k">server sees</span>
+          <span style="font:11px var(--mono);word-break:break-all;color:var(--text-muted)">0x01·9f3c…a7e2·7d1b04e6c95f…</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="wrap reveal" aria-label="At a glance">
+    <div class="stats">
+      <div class="stat"><b data-count="5">5</b><span>Platforms supported</span></div>
+      <div class="stat"><b data-count="256" data-suffix="-bit">256-bit</b><span>Keys, per item</span></div>
+      <div class="stat"><b data-count="0">0</b><span>Bytes the server can read</span></div>
+      <div class="stat"><b data-count="50">50</b><span>Versions kept per file</span></div>
+      <div class="stat"><b data-count="30" data-suffix=" days">30 days</b><span>In trash before purge</span></div>
+      <div class="stat"><b data-prefix="$" data-count="0">$0</b><span>Forever. AGPL-3.0</span></div>
+    </div>
+  </section>
+
+  <section class="wrap" id="features" aria-labelledby="features-title">
+    <div class="sec-head reveal">
+      <p class="eyebrow">Features</p>
+      <h2 id="features-title">Everything in one place</h2>
+      <p class="lede">The things you'd otherwise spread across a cloud drive, a notes app and a password manager, in one encrypted space you control.</p>
+    </div>
+    <div class="cards-3">
+      <div class="card reveal">
+        <div class="ficon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2.5 6.5a2 2 0 0 1 2-2h3.2l1.6 1.8h6.2a2 2 0 0 1 2 2v6.7a2 2 0 0 1-2 2h-11a2 2 0 0 1-2-2V6.5Z"/></svg></div>
+        <h3>Drive</h3>
+        <p>Drag in files of any size. Uploads resume after a dropped connection, unchanged parts are never re-sent, and every save is kept as a version you can roll back to.</p>
+        <div class="tags"><span class="tag">versioning</span><span class="tag">dedup</span><span class="tag">trash</span></div>
+      </div>
+      <div class="card reveal">
+        <div class="ficon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 2.5h7l3.5 3.5v11.5H5V2.5Z"/><path d="M8 9h5M8 12h5M8 15h3"/></svg></div>
+        <h3>Notes</h3>
+        <p>Markdown notes with tags that save as you type. If two devices edit the same note offline, you keep both versions instead of losing one.</p>
+        <div class="tags"><span class="tag">markdown</span><span class="tag">tags</span><span class="tag">search</span></div>
+      </div>
+      <div class="card reveal">
+        <div class="ficon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3.5" y="8.5" width="13" height="9" rx="2"/><path d="M6.5 8.5V6a3.5 3.5 0 0 1 7 0v2.5"/><circle cx="10" cy="13" r="1.2"/></svg></div>
+        <h3>Passwords</h3>
+        <p>A zero-knowledge vault with a password generator and a security check that flags weak and reused passwords. Copied passwords clear from the clipboard after 30 seconds.</p>
+        <div class="tags"><span class="tag">generator</span><span class="tag">health check</span><span class="tag">shared vaults</span></div>
+      </div>
+      <div class="card reveal">
+        <div class="ficon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3.5" width="14" height="13" rx="2"/><path d="M3 8h14M8 8v8.5"/></svg></div>
+        <h3>Records</h3>
+        <p>Structured entries for the things that don't fit in a file: warranties, subscriptions, medical history, home inventory. Encrypted like everything else. The table editor is on the roadmap.</p>
+        <div class="tags"><span class="tag">custom fields</span><span class="chip chip-accent">Editor coming</span></div>
+      </div>
+      <div class="card reveal">
+        <div class="ficon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="6.5" cy="7" r="2.5"/><circle cx="14" cy="8" r="2"/><path d="M2 16.5c.6-2.6 2.4-4 4.5-4s3.9 1.4 4.5 4M11.5 13.2c.7-.6 1.5-.9 2.5-.9 1.8 0 3.2 1.2 3.7 3.2"/></svg></div>
+        <h3>Sharing &amp; roles</h3>
+        <p>Admin, user, read-only and guest roles, groups, and per-space editor or viewer access. Share a single file with an expiring link that carries its own key.</p>
+        <div class="tags"><span class="tag">RBAC</span><span class="tag">groups</span><span class="tag">links</span></div>
+      </div>
+      <div class="card reveal">
+        <div class="ficon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 10a7 7 0 0 1 12-4.9M17 10a7 7 0 0 1-12 4.9"/><path d="M15 2.5v2.8h-2.8M5 17.5v-2.8h2.8"/></svg></div>
+        <h3>Offline-first sync</h3>
+        <p>Everything you've opened works without a connection. Changes queue up and sync when you're back, with clear rules for conflicts so nothing silently disappears.</p>
+        <div class="tags"><span class="tag">offline unlock</span><span class="tag">change feed</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="wrap" id="security" aria-labelledby="security-title">
+    <div class="sec-head reveal">
+      <p class="eyebrow">Security</p>
+      <h2 id="security-title">Private by construction, not by promise</h2>
+      <p class="lede">Your password never leaves your device. It unlocks a chain of keys that only your devices hold, so a stolen server, a nosy admin or a subpoena gets ciphertext and nothing else.</p>
+    </div>
+    <div class="split">
+      <div class="card reveal">
+        <h3>How your data is locked</h3>
+        <ol class="chain">
+          <li><span class="n">01</span><div><strong>Your password</strong><span>Stretched on your device with Argon2id (128 MiB, 3 passes).</span></div></li>
+          <li><span class="n">02</span><div><strong>Account key</strong><span>Unwrapped locally. The server only stores it encrypted.</span></div></li>
+          <li><span class="n">03</span><div><strong>Space keys</strong><span>One per drive or shared vault, sealed to each member's public key.</span></div></li>
+          <li><span class="n">04</span><div><strong>Item keys</strong><span>Every file, note and password has its own key, sealed with XChaCha20-Poly1305.</span></div></li>
+        </ol>
+      </div>
+      <div class="card reveal">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+          <h3>What the server actually stores</h3>
+          <span class="chip chip-accent">Ciphertext only</span>
+        </div>
+        <div class="ledger"><span class="hl">item</span>     9b2f…c41e   <span class="ac">kind=note</span>   rev=17
+<span class="hl">payload</span>  0x01·4be1d0…f29a73c0e1…  <span class="ac">(encrypted)</span>
+<span class="hl">key</span>      0x01·a07c55…3e18b9d2…    <span class="ac">(wrapped)</span>
+<span class="hl">audit</span>    #36  note.update  sha256=7f0e…  sig=ed25519 ✓</div>
+        <hr>
+        <ul class="checks">
+          <li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 8.5 3 3 7-7"/></svg>Two-step verification with backup codes, and a printed recovery key</li>
+          <li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 8.5 3 3 7-7"/></svg>Tamper-evident audit log: every entry is hash-chained and signed</li>
+          <li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 8.5 3 3 7-7"/></svg>Revoke a lost device from anywhere; remove a member and the keys rotate</li>
+          <li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 8.5 3 3 7-7"/></svg>Signed releases, SBOMs and dependency scanning on every build</li>
+        </ul>
+        <p style="font-size:13px;color:var(--text-faint)">The trade-off: no one can reset a forgotten password for you. Your recovery key is the only way back in, so keep it safe.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="wrap" id="assistant" aria-labelledby="assistant-title">
+    <div class="sec-head reveal">
+      <p class="eyebrow">AI assistant</p>
+      <h2 id="assistant-title">An assistant that only sees what you share</h2>
+      <p class="lede">The assistant is its own vNAS account. You share specific spaces with it, the same way you would with a person, and unsharing takes its access away. It runs 24/7 on a local model, so by default nothing leaves your network.</p>
+    </div>
+    <div class="split">
+      <div class="card reveal">
+        <ul class="checks">
+          <li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 8.5 3 3 7-7"/></svg>Ask questions across your notes and documents, with sources cited</li>
+          <li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 8.5 3 3 7-7"/></svg>Summaries, tag and folder suggestions, and plain-language security advice</li>
+          <li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 8.5 3 3 7-7"/></svg>Runs on Ollama with free models, from a Raspberry Pi to a GPU box</li>
+          <li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 8.5 3 3 7-7"/></svg>Cloud models are off by default. If you turn them on, emails, card numbers and keys are masked first</li>
+        </ul>
+        <hr>
+        <ul class="checks x">
+          <li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="m4 4 8 8M12 4l-8 8"/></svg>Never reads your passwords, even if you share the vault</li>
+          <li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="m4 4 8 8M12 4l-8 8"/></svg>Can't edit, move, share or delete anything</li>
+        </ul>
+      </div>
+      <div class="card reveal" aria-label="Example conversation">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+          <h3>Assistant</h3>
+          <span class="chip chip-ok"><span class="dot"></span>Local · llama3.1:8b</span>
+        </div>
+        <div class="chat">
+          <div class="bubble me">When does our home insurance renew, and what's the excess?</div>
+          <div class="bubble">It renews on 14 March. The excess is €250 per claim, or €500 for water damage.
+            <span class="cite">↳ Family / Insurance policy.pdf · p. 3</span></div>
+          <div class="bubble me">Draft an email to the broker asking about a lower excess.</div>
+          <div class="bubble">Here's a draft addressed to <span class="redact">[EMAIL_1]</span>. I've kept the policy number <span class="redact">[ID_1]</span> as a placeholder; it's filled in on your device before you send.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="wrap" id="setup" aria-labelledby="setup-title">
+    <div class="sec-head reveal">
+      <p class="eyebrow">Setup</p>
+      <div class="sec-title-row">
+        <h2 id="setup-title">Find the setup that fits</h2>
+        <a class="btn btn-secondary" href="docs/DEPLOYMENT.html">Full deployment guide</a>
+      </div>
+      <p class="lede">Three ways to run it, depending on who it's for. Home and small-team setups are ready today.</p>
+    </div>
+    <div class="cards-3">
+      <div class="mode-glow reveal">
+        <div class="card mode">
+          <div class="top"><h3>Home</h3><span class="chip chip-ok">Ready</span></div>
+          <p><span class="best">Best for: </span>A household on a mini PC, old laptop, NAS or Raspberry Pi 5.</p>
+          <hr>
+          <ul class="checks">
+            <li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 8.5 3 3 7-7"/></svg>One Docker command, free HTTPS included</li>
+            <li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 8.5 3 3 7-7"/></svg>No open ports needed with Tailscale</li>
+            <li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 8.5 3 3 7-7"/></svg>Nightly encrypted backups to USB or B2</li>
+          </ul>
+          <pre class="cmd">cp .env.example .env
+docker compose up -d</pre>
+          <div class="cta">
+            <a class="btn btn-primary btn-sm" href="docs/OPERATOR_MANUAL.html">Start the setup guide</a>
+            <a class="btn btn-secondary btn-sm" href="docs/ROADMAP.html">Release status</a>
+          </div>
+        </div>
+      </div>
+      <div class="reveal" style="height:100%">
+        <div class="card mode">
+          <div class="top"><h3>Small team</h3><span class="chip chip-ok">Ready</span></div>
+          <p><span class="best">Best for: </span>Offices and studios of up to a few dozen people on a VPS or in-house server.</p>
+          <hr>
+          <ul class="checks">
+            <li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 8.5 3 3 7-7"/></svg>Invites, groups, quotas and an admin console</li>
+            <li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 8.5 3 3 7-7"/></svg>Metrics, health checks and alerts to ntfy or any webhook</li>
+            <li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 8.5 3 3 7-7"/></svg>systemd or Docker, with signed updates</li>
+          </ul>
+          <div class="cta">
+            <a class="btn btn-primary btn-sm" href="docs/DEPLOYMENT.html">Read the deployment guide</a>
+            <a class="btn btn-secondary btn-sm" href="docs/SECURITY.html">Security model</a>
+          </div>
+        </div>
+      </div>
+      <div class="reveal" style="height:100%">
+        <div class="card mode unavailable">
+          <div class="top"><h3>Cluster</h3><span class="chip chip-muted">Planned</span></div>
+          <p><span class="best">Best for: </span>Larger organizations that need high availability across several nodes.</p>
+          <hr>
+          <ul class="checks">
+            <li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 8.5 3 3 7-7"/></svg>PostgreSQL for metadata</li>
+            <li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 8.5 3 3 7-7"/></svg>S3-compatible storage (MinIO, Garage, B2)</li>
+            <li><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 8.5 3 3 7-7"/></svg>Multi-replica Kubernetes</li>
+          </ul>
+          <div class="cta">
+            <a class="btn btn-secondary btn-sm" href="#roadmap">See the roadmap</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="wrap" id="roadmap" aria-labelledby="roadmap-title">
+    <div class="sec-head reveal">
+      <p class="eyebrow">Roadmap</p>
+      <h2 id="roadmap-title">The path so far</h2>
+      <p class="lede">Security foundations first, then every device, then independent review, then scale.</p>
+    </div>
+    <ol class="timeline">
+      <li class="done reveal">
+        <div class="when"><b>Phase 1</b><span class="chip chip-ok">Done</span></div>
+        <div><h3>Secure core</h3><p>Encryption, sign-in with two-step verification, files, notes, passwords, sharing, offline sync, the audit log, the web app and Docker deployment. Covered by end-to-end tests against a real server.</p></div>
+      </li>
+      <li class="now reveal">
+        <div class="when"><b>Phase 2</b><span class="chip chip-accent">In progress</span></div>
+        <div><h3>Every device</h3><p>Signed desktop apps for Windows, macOS and Linux, Android and iOS apps, passkeys, instant sync and full-text search.</p></div>
+      </li>
+      <li class="reveal">
+        <div class="when"><b>Phase 3</b><span class="chip chip-muted">Next</span></div>
+        <div><h3>Independent assurance</h3><p>External crypto review and penetration test, a stronger login protocol, verified contact keys and reproducible builds. v1.0 ships after this.</p></div>
+      </li>
+      <li class="reveal">
+        <div class="when"><b>Phase 4</b><span class="chip chip-muted">Later</span></div>
+        <div><h3>Scale and integrations</h3><p>S3 and PostgreSQL backends, a mountable drive, a photo timeline, and imports from Google Drive, OneDrive, Bitwarden and KeePass.</p></div>
+      </li>
+    </ol>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="foot">
+      <div>
+        <a class="logo" href="#top"><i></i>vNAS</a>
+        <p>Free, open-source private cloud storage. Built so that only you can read your data.</p>
+      </div>
+      <div><h4>Product</h4><ul><li><a href="#features">Features</a></li><li><a href="#assistant">AI assistant</a></li><li><a href="#roadmap">Roadmap</a></li></ul></div>
+      <div><h4>Run it</h4><ul><li><a href="docs/OPERATOR_MANUAL.html">Operator manual</a></li><li><a href="docs/DEPLOYMENT.html">Deployment</a></li><li><a href="docs/ROADMAP.html">Roadmap</a></li></ul></div>
+      <div><h4>Trust</h4><ul><li><a href="docs/SECURITY.html">Security model</a></li><li><a href="docs/ARCHITECTURE.html">Architecture</a></li><li><a href="docs/SECURITY.html#9-reporting-vulnerabilities">Report a vulnerability</a></li></ul></div>
+      <div><h4>Community</h4><ul><li><a href="https://github.com/Mangesh-Bhattacharya/vnas-site">GitHub</a></li><li><a href="https://github.com/Mangesh-Bhattacharya/vnas-site/issues">Issues</a></li></ul></div>
+    </div>
+    <div class="legal"><span>Licensed AGPL-3.0-or-later. No tracking on this page.</span><span>vNAS is pre-1.0 software. Keep backups.</span></div>
+  </div>
+</footer>
+
+<script>
+(function () {
+  document.body.classList.remove("no-js"); document.body.classList.add("js");
+  var root = document.documentElement;
+  var reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  // Theme toggle: explicit choice overrides the OS setting.
+  var btn = document.getElementById("theme");
+  function isDark() { return root.dataset.theme ? root.dataset.theme === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches; }
+  function label() { btn.setAttribute("aria-label", isDark() ? "Switch to light theme" : "Switch to dark theme"); }
+  btn.addEventListener("click", function () {
+    var next = isDark() ? "light" : "dark";
+    root.dataset.theme = next;
+    try { localStorage.setItem("vnas-theme", next); } catch (e) {}
+    label();
+  });
+  label();
+
+  // Header hairline + scroll progress.
+  var header = document.querySelector("header"), bar = document.getElementById("progress");
+  function onScroll() {
+    var max = document.documentElement.scrollHeight - innerHeight;
+    bar.style.width = (max > 0 ? (scrollY / max) * 100 : 0) + "%";
+    header.classList.toggle("scrolled", scrollY > 8);
+  }
+  addEventListener("scroll", onScroll, { passive: true }); onScroll();
+
+  // Highlight the nav link for the section in view.
+  var links = [].slice.call(document.querySelectorAll("nav.primary a"));
+  var spy = new IntersectionObserver(function (es) {
+    es.forEach(function (e) {
+      if (!e.isIntersecting) return;
+      links.forEach(function (a) { a.classList.toggle("on", a.getAttribute("href") === "#" + e.target.id); });
+    });
+  }, { rootMargin: "-45% 0px -50% 0px" });
+  links.forEach(function (a) { var s = document.querySelector(a.getAttribute("href")); if (s) spy.observe(s); });
+
+  // Reveal on scroll.
+  var io = new IntersectionObserver(function (es) {
+    es.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); } });
+  }, { rootMargin: "0px 0px -8% 0px" });
+  document.querySelectorAll(".reveal").forEach(function (el) { io.observe(el); });
+
+  // Count-up stats.
+  if (!reduce) {
+    var stats = document.querySelectorAll("[data-count]");
+    var so = new IntersectionObserver(function (es) {
+      es.forEach(function (e) {
+        if (!e.isIntersecting) return; so.unobserve(e.target);
+        var el = e.target, to = +el.dataset.count, pre = el.dataset.prefix || "", suf = el.dataset.suffix || "", t0 = performance.now();
+        if (!to) return;
+        (function tick(t) {
+          var p = Math.min(1, (t - t0) / 1200), v = Math.round(to * (1 - Math.pow(1 - p, 3)));
+          el.textContent = pre + v + suf; if (p < 1) requestAnimationFrame(tick);
+        })(t0);
+      });
+    }, { threshold: .6 });
+    stats.forEach(function (el) { so.observe(el); });
+  }
+})();
+</script>
+</body>
+</html>

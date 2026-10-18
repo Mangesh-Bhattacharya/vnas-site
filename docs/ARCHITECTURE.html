@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Architecture · vNAS</title>
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect x='3' y='3' width='10' height='10' rx='3' fill='%23d36000'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<script>try { var t = localStorage.getItem("vnas-theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch (e) {}</script>
+<link rel="stylesheet" href="docs.css">
+</head>
+<body>
+<header class="bar"><div class="wrap">
+  <a class="logo" href="../"><i></i>vNAS</a>
+  <nav aria-label="Documentation"><a href="OPERATOR_MANUAL.html">Operator manual</a><a href="DEPLOYMENT.html">Deployment</a><a href="SECURITY.html">Security model</a><a href="ARCHITECTURE.html" aria-current="page">Architecture</a><a href="API.html">API</a><a href="SYNC.html">Sync & offline</a><a href="AI.html">AI assistant</a><a href="ROADMAP.html">Roadmap</a></nav>
+</div></header>
+<main class="wrap"><article class="doc"><h1 id="architecture">Architecture</h1>
+<h2 id="1-principles">1. Principles</h2>
+<ol>
+<li><strong>Zero-knowledge server.</strong> Content, names, tags and keys are encrypted client-side. The server<br>
+stores ciphertext and enforces <em>who may fetch which ciphertext</em>. It is a storage and<br>
+coordination service, not a trusted party.</li>
+<li><strong>One crypto implementation.</strong> All clients (web, desktop, mobile, AI agent) share<br>
+<code class="notranslate">@vnas/core</code> (TypeScript + libsodium). One tested codebase, so the platforms cannot drift apart.</li>
+<li><strong>Offline-first.</strong> Clients read from an encrypted local cache and write through an outbox.<br>
+The network is an optimization.</li>
+<li><strong>Boring, auditable server.</strong> Go standard library, <code class="notranslate">chi</code> router, SQLite, and three small<br>
+dependencies. One static binary, no runtime.</li>
+</ol>
+<h2 id="2-components">2. Components</h2>
+<pre class="notranslate"><code class="notranslate">┌─────────────────────────── clients ───────────────────────────┐
+│ apps/web (React PWA)   apps/desktop (Tauri v2 → wraps web)     │
+│ apps/mobile (Expo / React Native)   apps/agent (Node service)  │
+│            └──────────── @vnas/core ───────────┘               │
+│   crypto.ts  Argon2id, XChaCha20-Poly1305, X25519, Ed25519     │
+│   vnas.ts    accounts, spaces, items, files, sharing, links    │
+│   sync.ts    outbox, change feed, conflict resolution          │
+│   hygiene.ts weak/reused password audit, generator             │
+│            @vnas/ai: providers, RAG, redaction (agent)         │
+└────────────────────────────┬───────────────────────────────────┘
+                             │ HTTPS (TLS 1.2+/1.3 via Caddy)
+┌────────────────────────────▼──── server/ (vnasd) ─────────────┐
+│ httpx     security headers, CSRF origin check, rate limits,    │
+│           body caps, trusted-proxy client IP                   │
+│ auth      prelogin/signup/login, TOTP MFA, sessions, devices,  │
+│           password change, recovery                            │
+│ content   spaces &amp; members, items, versions, chunks, trash,    │
+│           change feed, share links, maintenance/GC             │
+│ admin     users/roles/quotas, invites, groups, audit, stats    │
+│ audit     hash-chained, Ed25519-signed append-only log         │
+│ ops       /healthz /readyz /metrics, webhook alerts, disk watch│
+│ storage   BlobStore interface → Local (disk / NFS / SMB mount) │
+│ db        SQLite (WAL), embedded migrations                    │
+└────────────────────────────────────────────────────────────────┘
+</code></pre>
+<h2 id="3-domain-model">3. Domain model</h2>
+<markdown-accessiblity-table><table role="table">
+<thead>
+<tr>
+<th>Concept</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>User</strong></td>
+<td>An account with a global role: <code class="notranslate">admin</code>, <code class="notranslate">user</code>, <code class="notranslate">readonly</code>, <code class="notranslate">guest</code></td>
+</tr>
+<tr>
+<td><strong>Device</strong></td>
+<td>A client install. Enrolled at login, can be revoked, and may be flagged <code class="notranslate">is_agent</code></td>
+</tr>
+<tr>
+<td><strong>Space</strong></td>
+<td>A unit of <strong>encryption and sharing</strong>: a drive, vault, notebook (<code class="notranslate">notes</code>), or <code class="notranslate">records</code> collection. It has one symmetric <em>space key</em> per epoch</td>
+</tr>
+<tr>
+<td><strong>Member</strong></td>
+<td>(space, user, role <code class="notranslate">owner/editor/viewer</code>, space keyring sealed to the user's public key)</td>
+</tr>
+<tr>
+<td><strong>Item</strong></td>
+<td>A folder, file, note, secret (vault entry), or record. Each item has its own <em>item key</em>, wrapped by the space key</td>
+</tr>
+<tr>
+<td><strong>Version</strong></td>
+<td>An immutable file revision: encrypted manifest plus ordered chunk list</td>
+</tr>
+<tr>
+<td><strong>Chunk</strong></td>
+<td>Up to 4 MiB of file data, encrypted. Its ID is a keyed BLAKE2b hash of the plaintext</td>
+</tr>
+<tr>
+<td><strong>Change</strong></td>
+<td>A row in the global, monotonic change feed that drives delta sync</td>
+</tr>
+</tbody>
+</table></markdown-accessiblity-table>
+<p>Sharing a folder means making it its own space (or a sub-space) and adding members. Groups are<br>
+directory entries: sharing with a group seals the space key to each member individually.</p>
+<h3 id="tables-sqlite-serverinternaldbmigrations0001initsql">Tables (SQLite, <code class="notranslate">server/internal/db/migrations/0001_init.sql</code>)</h3>
+<pre class="notranslate"><code class="notranslate">users ─┬─&lt; devices ─&lt; sessions
+       ├─&lt; mfa_recovery_codes
+       ├─&lt; space_members &gt;─ spaces ─┬─&lt; items ─┬─&lt; item_versions ─&lt; version_chunks &gt;─ chunks
+       └─&lt; group_members &gt;─ groups  │          └─&lt; share_links
+                                    └─&lt; chunks
+changes (seq, space_id, item_id, op)     audit_log (seq, …, prev_hash, hash, sig)
+invites
+</code></pre>
+<h2 id="4-stack-choices-and-why">4. Stack choices and why</h2>
+<markdown-accessiblity-table><table role="table">
+<thead>
+<tr>
+<th>Layer</th>
+<th>Choice</th>
+<th>Rationale</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Server language</td>
+<td><strong>Go</strong></td>
+<td>Memory-safe, strongly typed, excellent stdlib crypto/TLS/HTTP, static cross-compiled binaries for all OSes and ARM boards (Raspberry Pi, Synology), and fast security patch releases. Rust would be equally safe but slower to iterate on</td>
+</tr>
+<tr>
+<td>Database</td>
+<td><strong>SQLite</strong> (default)</td>
+<td>A vNAS is usually one household or team on one box. SQLite needs no extra daemon, its backup is one file (<code class="notranslate">VACUUM INTO</code>), and WAL mode handles concurrent readers. SQL is kept portable. <strong>PostgreSQL</strong> is the planned option for multi-node or high-availability setups (roadmap phase 4)</td>
+</tr>
+<tr>
+<td>Search</td>
+<td><strong>Client-side</strong></td>
+<td>The server cannot index ciphertext. Clients search their decrypted cache. Planned: SQLite FTS5 on desktop/mobile, an in-memory index on the web, and the agent's semantic index</td>
+</tr>
+<tr>
+<td>Blob storage</td>
+<td><code class="notranslate">BlobStore</code> interface</td>
+<td>Local disk today. NFS/SMB mounts work as local paths. S3-compatible (MinIO, Garage, B2) is the next backend</td>
+</tr>
+<tr>
+<td>Client crypto</td>
+<td><strong>libsodium</strong></td>
+<td>Audited and misuse-resistant, with the same primitives on every platform (WASM on web/Node, native via <code class="notranslate">react-native-libsodium</code> on mobile)</td>
+</tr>
+<tr>
+<td>Web</td>
+<td><strong>React + Vite</strong>, PWA</td>
+<td>Ubiquitous; the PWA gives installable offline use. CSP: <code class="notranslate">script-src 'self' 'wasm-unsafe-eval'</code></td>
+</tr>
+<tr>
+<td>Desktop</td>
+<td><strong>Tauri v2</strong></td>
+<td>~10 MB installers (vs ~100 MB for Electron), Rust backend, OS keychain, minisign-verified auto-updates, least-privilege capability system</td>
+</tr>
+<tr>
+<td>Mobile</td>
+<td><strong>Expo / React Native</strong></td>
+<td>Shares TypeScript with web and core. SecureStore uses the Keychain/Keystore, plus biometrics, SQLite, background fetch, and signed OTA updates</td>
+</tr>
+<tr>
+<td>AI</td>
+<td><strong>Ollama</strong> default; any OpenAI-compatible API</td>
+<td>Local-first. llama.cpp <code class="notranslate">llama-server</code>, LM Studio and vLLM also speak the OpenAI API. Cloud providers only behind an explicit policy</td>
+</tr>
+<tr>
+<td>TLS</td>
+<td><strong>Caddy</strong></td>
+<td>Automatic Let's Encrypt/ZeroSSL, HTTP/3, modern defaults</td>
+</tr>
+<tr>
+<td>Backups</td>
+<td><strong>restic</strong></td>
+<td>Encrypted, deduplicated, many backends, built-in integrity checks</td>
+</tr>
+</tbody>
+</table></markdown-accessiblity-table>
+<h2 id="5-request-flow-examples">5. Request flow examples</h2>
+<p><strong>Upload</strong> (<code class="notranslate">Vnas.prepareFile</code> → <code class="notranslate">SyncEngine</code>):</p>
+<ol>
+<li>Generate an item key, split the file into 4 MiB chunks, compute <code class="notranslate">id = BLAKE2b-256(key=itemKey, chunk)</code>, and encrypt each chunk.</li>
+<li>Build the manifest (<code class="notranslate">{size, chunks:[{id,size}], signer}</code>), sign it with Ed25519, then encrypt it.</li>
+<li>Queue <code class="notranslate">create item</code> + <code class="notranslate">commit version</code> in the outbox (this works offline).</li>
+<li>When online: <code class="notranslate">POST /chunks/missing</code>, then <code class="notranslate">PUT</code> only the missing chunks (resumable, parallel ×4), then <code class="notranslate">POST /versions</code>.</li>
+</ol>
+<p><strong>Download</strong>: fetch the version, decrypt the manifest and verify its signature, fetch and decrypt the chunks,<br>
+check each chunk's ID against its plaintext, then check total size (catches truncation, reordering and substitution).</p>
+<p><strong>Share</strong>: look up the recipient's public key, seal the space keyring to it, then <code class="notranslate">PUT /spaces/{id}/members/{uid}</code>.<br>
+<strong>Unshare</strong>: remove the member, generate a new epoch key, re-seal it to the remaining members, then <code class="notranslate">POST /rotate</code>.</p></article></main>
+<footer class="wrap foot">Licensed AGPL-3.0-or-later · vNAS is pre-1.0 software. Keep backups. · <a href="../">Home</a></footer>
+</body>
+</html>

@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI assistant · vNAS</title>
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect x='3' y='3' width='10' height='10' rx='3' fill='%23d36000'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<script>try { var t = localStorage.getItem("vnas-theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch (e) {}</script>
+<link rel="stylesheet" href="docs.css">
+</head>
+<body>
+<header class="bar"><div class="wrap">
+  <a class="logo" href="../"><i></i>vNAS</a>
+  <nav aria-label="Documentation"><a href="OPERATOR_MANUAL.html">Operator manual</a><a href="DEPLOYMENT.html">Deployment</a><a href="SECURITY.html">Security model</a><a href="ARCHITECTURE.html">Architecture</a><a href="API.html">API</a><a href="SYNC.html">Sync & offline</a><a href="AI.html" aria-current="page">AI assistant</a><a href="ROADMAP.html">Roadmap</a></nav>
+</div></header>
+<main class="wrap"><article class="doc"><h1 id="ai-assistant">AI assistant</h1>
+<p>Code: <code class="notranslate">packages/ai</code> (providers, retrieval, redaction), <code class="notranslate">apps/agent</code> (always-on service), and the<br>
+<code class="notranslate">Assistant</code> page in the web client. Tests: <code class="notranslate">packages/ai/test/assistant.test.ts</code>.</p>
+<h2 id="1-the-core-problem-and-the-design-answer">1. The core problem, and the design answer</h2>
+<p>With end-to-end encryption, <strong>the server cannot run an AI over your data</strong>. It only has ciphertext.<br>
+Whatever runs the model must hold keys. vNAS solves this without weakening the model:</p>
+<p><strong>The assistant is a separate vNAS account with its own keys.</strong> You share selected spaces with it<br>
+(viewer role) exactly as you would with a person. Consequences:</p>
+<ul>
+<li><strong>Least privilege:</strong> it can read only what you shared. Your vault is not shared by default, and even<br>
+if you share it, the agent refuses to index <code class="notranslate">secret</code> items.</li>
+<li><strong>Instant revocation:</strong> unshare the space (and the key rotates), or revoke the agent's device.</li>
+<li><strong>No cross-user leakage by construction:</strong> one agent account per user. Retrieval is additionally<br>
+filtered by space on every request.</li>
+<li><strong>It never holds your master key</strong>, so a compromised agent host exposes only the shared spaces.</li>
+</ul>
+<pre class="notranslate"><code class="notranslate"> You ──share "Notes" (viewer)──► assistant@home account
+                                      │ syncs + decrypts shared spaces only
+                                 vnas-agent (Node) ──► Ollama / llama.cpp (local)
+                                      │                 └─ or cloud API (opt-in, redacted)
+ web / desktop / mobile ──Bearer token──► /v1/chat, /v1/summarize, /v1/suggestions, /v1/coach
+</code></pre>
+<h2 id="2-capabilities">2. Capabilities</h2>
+<markdown-accessiblity-table><table role="table">
+<thead>
+<tr>
+<th>Capability</th>
+<th>How</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Natural-language search and Q&amp;A</td>
+<td>Hybrid retrieval (embeddings via <code class="notranslate">nomic-embed-text</code> + lexical scoring) over notes, records and text files. Answers cite documents with their paths</td>
+</tr>
+<tr>
+<td>Summarization</td>
+<td><code class="notranslate">/v1/summarize</code></td>
+</tr>
+<tr>
+<td>Organization help</td>
+<td><code class="notranslate">/v1/suggestions</code>: tags, folders and renames from <strong>metadata only</strong></td>
+</tr>
+<tr>
+<td>Security hygiene coaching</td>
+<td>Weak/reused/old passwords are detected <strong>on your device</strong> (<code class="notranslate">core/hygiene.ts</code>). Only the findings (no secrets) go to <code class="notranslate">/v1/coach</code> for plain-language advice</td>
+</tr>
+<tr>
+<td>Sharing-risk alerts</td>
+<td><code class="notranslate">/v1/insights</code>: over-broad shares. The admin audit log covers link creation and opens</td>
+</tr>
+</tbody>
+</table></markdown-accessiblity-table>
+<h2 id="3-privacy-controls">3. Privacy controls</h2>
+<markdown-accessiblity-table><table role="table">
+<thead>
+<tr>
+<th>Control</th>
+<th>Default</th>
+<th>Setting</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>LLM location</td>
+<td><strong>Local</strong> (Ollama)</td>
+<td><code class="notranslate">LLM_PROVIDER=ollama</code> or <code class="notranslate">openai</code> + <code class="notranslate">LLM_LOCALITY=local|cloud</code></td>
+</tr>
+<tr>
+<td>Cloud allowed at all</td>
+<td><strong>No</strong>: the agent refuses to start with a cloud LLM unless enabled</td>
+<td><code class="notranslate">AI_CLOUD_ALLOWED=true</code></td>
+</tr>
+<tr>
+<td>Which spaces may go to the cloud</td>
+<td>none</td>
+<td><code class="notranslate">AI_CLOUD_SPACES=&lt;space ids&gt;</code></td>
+</tr>
+<tr>
+<td>Redaction before cloud calls</td>
+<td><strong>On</strong>: emails, phones, card numbers (Luhn), IBANs, API keys, JWTs, private keys, <code class="notranslate">password: …</code> patterns, IPs, SSNs → <code class="notranslate">[EMAIL_1]</code>… and restored locally in the answer</td>
+<td><code class="notranslate">AI_REDACT</code></td>
+</tr>
+<tr>
+<td>Context size sent</td>
+<td>12 000 characters</td>
+<td><code class="notranslate">AI_MAX_CONTEXT_CHARS</code></td>
+</tr>
+<tr>
+<td>Vault secrets</td>
+<td>Never indexed, never sent</td>
+<td>not configurable</td>
+</tr>
+<tr>
+<td>Prompt injection</td>
+<td>Document text is wrapped in <code class="notranslate">&lt;document&gt;</code> tags with a system rule to treat it as untrusted data; the assistant has <strong>no write or share tools</strong>, so injected instructions cannot act</td>
+<td>—</td>
+</tr>
+</tbody>
+</table></markdown-accessiblity-table>
+<h2 id="4-choosing-a-model-all-free">4. Choosing a model (all free)</h2>
+<markdown-accessiblity-table><table role="table">
+<thead>
+<tr>
+<th>Hardware</th>
+<th>Suggested model (via Ollama)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Raspberry Pi 5 / small NAS (8 GB)</td>
+<td><code class="notranslate">llama3.2:3b</code> or <code class="notranslate">qwen2.5:3b</code>. Slow but works</td>
+</tr>
+<tr>
+<td>Laptop / mini PC (16 GB)</td>
+<td><code class="notranslate">llama3.1:8b</code>, <code class="notranslate">qwen2.5:7b</code>, <code class="notranslate">mistral-nemo</code></td>
+</tr>
+<tr>
+<td>GPU 12–24 GB</td>
+<td><code class="notranslate">qwen2.5:14b</code>, <code class="notranslate">gemma2:27b</code></td>
+</tr>
+<tr>
+<td>Embeddings</td>
+<td><code class="notranslate">nomic-embed-text</code> (274 MB)</td>
+</tr>
+</tbody>
+</table></markdown-accessiblity-table>
+<p><code class="notranslate">ollama pull llama3.1:8b &amp;&amp; ollama pull nomic-embed-text</code></p>
+<h2 id="5-running-it">5. Running it</h2>
+<div class="highlight highlight-source-shell"><pre class="notranslate"><span class="pl-c"><span class="pl-c">#</span> 1. In vNAS: create an account for the assistant (an invite with role "user"),</span>
+<span class="pl-c"><span class="pl-c">#</span>    then from YOUR account share the spaces it should know about, as viewer.</span>
+<span class="pl-c"><span class="pl-c">#</span> 2. Start it</span>
+VNAS_URL=https://nas.example.org AGENT_EMAIL=assistant@example.org \
+AGENT_PASSWORD_FILE=/etc/vnas/agent-password LLM_PROVIDER=ollama \
+node apps/agent/dist/main.js
+<span class="pl-c"><span class="pl-c">#</span> 3. Copy agent-state/client-token into the web/desktop app → Assistant → Connection</span></pre></div>
+<p>With Docker: <code class="notranslate">docker compose --profile ai up -d</code> (see DEPLOYMENT.md). On a laptop, desktop users can<br>
+run the agent locally next to Ollama for a fully offline assistant.</p>
+<h2 id="6-extending">6. Extending</h2>
+<ul>
+<li><strong>Providers:</strong> implement <code class="notranslate">ChatProvider</code> / <code class="notranslate">Embedder</code> (<code class="notranslate">packages/ai/src/providers.ts</code>).</li>
+<li><strong>Extractors:</strong> <code class="notranslate">extractText</code> in <code class="notranslate">apps/agent/src/main.ts</code> handles notes, records and text files. Add<br>
+PDF (pdf.js), Office (mammoth) or OCR (tesseract.js) there.</li>
+<li><strong>Persistence:</strong> the index is rebuilt from the sync cache on start. For large libraries, persist<br>
+vectors in an encrypted SQLite + <code class="notranslate">sqlite-vec</code> file keyed from the agent's keystore (roadmap).</li>
+</ul></article></main>
+<footer class="wrap foot">Licensed AGPL-3.0-or-later · vNAS is pre-1.0 software. Keep backups. · <a href="../">Home</a></footer>
+</body>
+</html>

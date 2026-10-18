@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sync & offline · vNAS</title>
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect x='3' y='3' width='10' height='10' rx='3' fill='%23d36000'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<script>try { var t = localStorage.getItem("vnas-theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch (e) {}</script>
+<link rel="stylesheet" href="docs.css">
+</head>
+<body>
+<header class="bar"><div class="wrap">
+  <a class="logo" href="../"><i></i>vNAS</a>
+  <nav aria-label="Documentation"><a href="OPERATOR_MANUAL.html">Operator manual</a><a href="DEPLOYMENT.html">Deployment</a><a href="SECURITY.html">Security model</a><a href="ARCHITECTURE.html">Architecture</a><a href="API.html">API</a><a href="SYNC.html" aria-current="page">Sync & offline</a><a href="AI.html">AI assistant</a><a href="ROADMAP.html">Roadmap</a></nav>
+</div></header>
+<main class="wrap"><article class="doc"><h1 id="sync-and-offline-operation">Sync and offline operation</h1>
+<p>Implementation: <code class="notranslate">packages/core/src/sync.ts</code>, <code class="notranslate">server/internal/content/items.go</code>. Covered by<br>
+<code class="notranslate">packages/core/test/e2e.test.ts</code>, which simulates two devices editing the same items offline.</p>
+<h2 id="local-state-per-device">Local state per device</h2>
+<markdown-accessiblity-table><table role="table">
+<thead>
+<tr>
+<th>Store</th>
+<th>Contents</th>
+<th>Web</th>
+<th>Desktop</th>
+<th>Mobile</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code class="notranslate">meta</code></td>
+<td>sync cursor, key bundle (KDF params + <em>wrapped</em> keys), raw spaces</td>
+<td>IndexedDB</td>
+<td>IndexedDB (system webview)</td>
+<td>SQLite</td>
+</tr>
+<tr>
+<td><code class="notranslate">items</code></td>
+<td>raw items, i.e. <strong>the same ciphertext the server holds</strong></td>
+<td>IndexedDB</td>
+<td>IndexedDB</td>
+<td>SQLite</td>
+</tr>
+<tr>
+<td><code class="notranslate">outbox</code></td>
+<td>queued, already-encrypted operations (including encrypted chunks)</td>
+<td>IndexedDB</td>
+<td>IndexedDB</td>
+<td>SQLite</td>
+</tr>
+<tr>
+<td>unlock key</td>
+<td>AMK</td>
+<td>memory only</td>
+<td>memory, or OS keychain if "remember"</td>
+<td>memory, or Keychain/Keystore + biometrics</td>
+</tr>
+</tbody>
+</table></markdown-accessiblity-table>
+<p>Because the cache is ciphertext, being offline does not reduce security. <strong>Offline unlock</strong><br>
+re-derives the wrap key from the password, unwraps the cached <code class="notranslate">wrappedAmk</code>, and opens the cache. No<br>
+server is needed (<code class="notranslate">Vnas.unlockOffline</code>, tested in e2e).</p>
+<h2 id="write-path">Write path</h2>
+<ol>
+<li>UI calls <code class="notranslate">client.prepareCreate/Update/Delete/prepareFile</code>. The op is <strong>encrypted immediately</strong>.</li>
+<li><code class="notranslate">engine.enqueue(op)</code>: apply optimistically to the local cache (<code class="notranslate">revision = -1</code> marks "pending"), then<br>
+persist to the outbox, then trigger a sync.</li>
+<li><code class="notranslate">flush()</code>: send ops <strong>in order</strong>. <code class="notranslate">baseRevision = -1</code> means "the revision my own earlier pending write<br>
+produced" and is resolved from the results of earlier ops in the same flush.</li>
+<li>Network error, 5xx or 429: stop and keep order; retry on the next tick, the <code class="notranslate">online</code> event, or a background task.</li>
+</ol>
+<h2 id="read-path-delta-sync">Read path (delta sync)</h2>
+<p><code class="notranslate">pull()</code>: <code class="notranslate">GET /sync/changes?since=cursor</code> pages through the latest change per item in every space<br>
+the user belongs to, upserts or removes cached items, and stores the new cursor. Items with pending<br>
+local ops are skipped until those ops flush (local intent wins until confirmed). Membership changes<br>
+(<code class="notranslate">member</code>/<code class="notranslate">space</code> ops) reload the space list: new spaces are snapshotted with <code class="notranslate">?all=1</code>, and revoked<br>
+spaces are dropped from the cache.</p>
+<p>Triggers: every 30 s (web/desktop), 60 s (agent), OS background fetch every ~15 min (mobile), window<br>
+<code class="notranslate">online</code> event, and after each local write. Planned for phase 2: a server-sent-events push channel.</p>
+<h2 id="files-delta-and-resumable">Files: delta and resumable</h2>
+<ul>
+<li>4 MiB chunks with <strong>content-derived IDs</strong> (keyed BLAKE2b). Editing the end of a large file<br>
+re-uploads only the changed chunks; the others are found via <code class="notranslate">POST /chunks/missing</code>.</li>
+<li>Chunk upload is idempotent, so an interrupted upload resumes by asking again which chunks are missing.<br>
+Uncommitted chunks are garbage-collected after 24 h.</li>
+<li>Versions are immutable. The last 50 are kept per file (<code class="notranslate">VNAS_VERSIONS_TO_KEEP</code>).</li>
+</ul>
+<h2 id="conflict-rules">Conflict rules</h2>
+<p>Every write carries <code class="notranslate">baseRevision</code>. A mismatch yields <code class="notranslate">409</code> with the server's current item, and<br>
+<code class="notranslate">Vnas.resolveConflict</code> decides:</p>
+<markdown-accessiblity-table><table role="table">
+<thead>
+<tr>
+<th>Situation</th>
+<th>Resolution</th>
+<th>Data loss?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Rename / move / tag edit (metadata only)</td>
+<td>Rebase onto the server state; last writer wins</td>
+<td>Previous name only</td>
+</tr>
+<tr>
+<td>Vault entry edited on two devices</td>
+<td><strong>Field-level merge</strong>: each field keeps the newer <code class="notranslate">updatedAt</code> (e.g. password from A, username from B)</td>
+<td>No</td>
+</tr>
+<tr>
+<td>Note body edited on two devices</td>
+<td>Keep the server version; save the local version as <strong>"… (conflict YYYY-MM-DDTHH:MM)"</strong></td>
+<td>No</td>
+</tr>
+<tr>
+<td>File edited on two devices</td>
+<td>The local version becomes current; the other remains in <strong>version history</strong></td>
+<td>No</td>
+</tr>
+<tr>
+<td>Delete vs. edit</td>
+<td><strong>Edit wins</strong>; the delete is dropped and the user notified</td>
+<td>No</td>
+</tr>
+<tr>
+<td>Create replayed after a crash</td>
+<td><code class="notranslate">409 exists</code> treated as success</td>
+<td>No</td>
+</tr>
+</tbody>
+</table></markdown-accessiblity-table>
+<p>The UI receives <code class="notranslate">onConflict(itemId, note)</code> and shows a toast. A conflict-review screen that diffs<br>
+two note versions side by side is planned for phase 2.</p>
+<h2 id="trash-and-retention">Trash and retention</h2>
+<p>Delete is a soft delete of the whole subtree (<code class="notranslate">deleted_at</code>). Restore brings back exactly what was<br>
+trashed together. Purge is permanent. Trash auto-purges after 30 days (<code class="notranslate">VNAS_TRASH_RETENTION</code>).</p></article></main>
+<footer class="wrap foot">Licensed AGPL-3.0-or-later · vNAS is pre-1.0 software. Keep backups. · <a href="../">Home</a></footer>
+</body>
+</html>

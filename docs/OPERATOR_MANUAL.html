@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Operator manual · vNAS</title>
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect x='3' y='3' width='10' height='10' rx='3' fill='%23d36000'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<script>try { var t = localStorage.getItem("vnas-theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch (e) {}</script>
+<link rel="stylesheet" href="docs.css">
+</head>
+<body>
+<header class="bar"><div class="wrap">
+  <a class="logo" href="../"><i></i>vNAS</a>
+  <nav aria-label="Documentation"><a href="OPERATOR_MANUAL.html" aria-current="page">Operator manual</a><a href="DEPLOYMENT.html">Deployment</a><a href="SECURITY.html">Security model</a><a href="ARCHITECTURE.html">Architecture</a><a href="API.html">API</a><a href="SYNC.html">Sync & offline</a><a href="AI.html">AI assistant</a><a href="ROADMAP.html">Roadmap</a></nav>
+</div></header>
+<main class="wrap"><article class="doc"><h1 id="vnas-operator-manual-plain-language">vNAS operator manual (plain language)</h1>
+<p>This guide is for whoever sets up vNAS for a household or small team. No programming needed.</p>
+<h2 id="the-three-things-that-matter-most">The three things that matter most</h2>
+<ol>
+<li><strong>Your password unlocks your data, and nobody can reset it.</strong> Not the admin, not the developers.<br>
+This is what makes vNAS private.</li>
+<li><strong>When you create an account you get a recovery key. Print it and keep it somewhere safe.</strong><br>
+It is the only way back in if you forget your password.</li>
+<li><strong>Back up the server</strong> (section 6). Encryption protects privacy, but only backups protect against a dead disk.</li>
+</ol>
+<hr>
+<h2 id="1-install-the-server">1. Install the server</h2>
+<p>Pick one computer that stays on: a mini PC, an old laptop, a NAS with Docker, a Raspberry Pi 5, or a<br>
+small cloud server.</p>
+<h3 id="easiest-docker-linux-windows-macos">Easiest: Docker (Linux, Windows, macOS)</h3>
+<ol>
+<li>Install <strong>Docker Desktop</strong> (Windows/macOS) or Docker Engine (Linux).</li>
+<li>Download vNAS and open the <code class="notranslate">deploy</code> folder in a terminal.</li>
+<li>Copy <code class="notranslate">.env.example</code> to <code class="notranslate">.env</code> and fill in:
+<ul>
+<li><code class="notranslate">VNAS_DOMAIN</code>: the web address you will use (for example <code class="notranslate">nas.smith-family.org</code>). It must point to this computer.</li>
+<li><code class="notranslate">ACME_EMAIL</code>: your email, used for the free HTTPS certificate.</li>
+</ul>
+</li>
+<li>Run <code class="notranslate">docker compose up -d</code>. After a minute, open <code class="notranslate">https://&lt;your domain&gt;</code>.</li>
+</ol>
+<p>No domain, or don't want to open your router? Install <strong>Tailscale</strong> (free for personal use) on the<br>
+server and your devices, then use the Tailscale name as the address.</p>
+<h3 id="without-docker">Without Docker</h3>
+<ul>
+<li><strong>Windows:</strong> put <code class="notranslate">vnasd.exe</code> in <code class="notranslate">C:\vnas</code>, run <code class="notranslate">vnasd.exe serve</code> (or install it as a service, see DEPLOYMENT.md §3).</li>
+<li><strong>macOS / Linux:</strong> run <code class="notranslate">./vnasd serve</code>. On Linux, the included systemd service starts it automatically.</li>
+</ul>
+<h2 id="2-install-the-apps">2. Install the apps</h2>
+<markdown-accessiblity-table><table role="table">
+<thead>
+<tr>
+<th>Device</th>
+<th>How</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Windows</strong></td>
+<td>Run the <code class="notranslate">vNAS_x.y.z_x64-setup.exe</code> installer</td>
+</tr>
+<tr>
+<td><strong>macOS</strong></td>
+<td>Open the <code class="notranslate">.dmg</code>, drag vNAS to Applications</td>
+</tr>
+<tr>
+<td><strong>Linux</strong></td>
+<td><code class="notranslate">.AppImage</code> (any distro), <code class="notranslate">.deb</code> (Ubuntu/Debian) or <code class="notranslate">.rpm</code> (Fedora)</td>
+</tr>
+<tr>
+<td><strong>Android</strong></td>
+<td>Install the APK (allow "install unknown apps" once), or use F-Droid / Play Store if published</td>
+</tr>
+<tr>
+<td><strong>iPhone / iPad</strong></td>
+<td>App Store / TestFlight build, <strong>or</strong> open your vNAS address in Safari → Share → <em>Add to Home Screen</em></td>
+</tr>
+<tr>
+<td><strong>Any browser</strong></td>
+<td>Just visit your vNAS address</td>
+</tr>
+</tbody>
+</table></markdown-accessiblity-table>
+<p>On first launch, enter your server address, email and password. On phones you can turn on Face ID or<br>
+fingerprint unlock; on desktop, tick <em>Remember on this device</em> to use the system keychain.</p>
+<h2 id="3-first-account-users-roles-and-permissions">3. First account, users, roles and permissions</h2>
+<ol>
+<li>The <strong>first account created becomes the administrator.</strong> Do this right after installing.</li>
+<li>Turn on two-factor authentication: <strong>Settings → Set up authenticator app</strong> (use Aegis, 2FAS, or any<br>
+authenticator), then store the 10 backup codes with your recovery key.</li>
+<li>Add people: <strong>Admin → Create invite</strong>, choose a role, and send them the code. They enter it on the sign-up screen.</li>
+</ol>
+<markdown-accessiblity-table><table role="table">
+<thead>
+<tr>
+<th>Role</th>
+<th>Good for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>admin</strong></td>
+<td>You, plus a trusted backup admin. Manages accounts but <strong>cannot see anyone's files</strong></td>
+</tr>
+<tr>
+<td><strong>user</strong></td>
+<td>Family members and colleagues</td>
+</tr>
+<tr>
+<td><strong>readonly</strong></td>
+<td>Someone who should only look (e.g. an accountant viewing shared receipts)</td>
+</tr>
+<tr>
+<td><strong>guest</strong></td>
+<td>Temporary access to just what you share with them</td>
+</tr>
+</tbody>
+</table></markdown-accessiblity-table>
+<p><strong>Sharing:</strong> in Drive, <em>Share</em> gives a person access to the whole drive (as editor or viewer).<br>
+For one file, <em>Link</em> creates a private link that expires (you choose how many hours). The link<br>
+itself contains the key, so send it over a channel you trust.</p>
+<p><strong>Quotas:</strong> Admin → click the quota cell for a user.<br>
+<strong>Disable an account:</strong> Admin → click <em>active</em> to switch it to <em>disabled</em> (signs them out everywhere).</p>
+<h2 id="4-everyday-use">4. Everyday use</h2>
+<ul>
+<li><strong>Drive:</strong> drag files in. They are encrypted on your device before they leave it. Old versions are kept automatically.</li>
+<li><strong>Notes:</strong> Markdown notes with tags; they save automatically.</li>
+<li><strong>Passwords:</strong> add entries, use <em>Generate</em> for strong passwords, and <em>Security check</em> to find weak or reused ones.<br>
+Copied passwords clear from the clipboard after 30 seconds.</li>
+<li><strong>Offline:</strong> everything you have opened on a device is available offline. Changes made offline<br>
+sync when you reconnect. If two devices changed the same note, you get both versions (one marked <em>conflict</em>).</li>
+<li><strong>Trash:</strong> deleted items stay in Trash for 30 days.</li>
+<li><strong>Lost phone or laptop:</strong> from any other device, <strong>Settings → Devices → Revoke</strong>. Then change your password.</li>
+</ul>
+<h2 id="5-using-the-ai-assistant-safely">5. Using the AI assistant safely</h2>
+<ul>
+<li>The assistant is a <strong>separate account</strong> that only sees what you share with it. Start small: share<br>
+your Notes, not your Passwords. vNAS will never let the assistant read password entries anyway.</li>
+<li>By default it runs <strong>entirely on your server</strong> with a free local model (Ollama), so nothing leaves your network.</li>
+<li>Setup: create an account for it (Admin → invite), share spaces with it as <em>viewer</em>, start it with<br>
+<code class="notranslate">docker compose --profile ai up -d</code>, then paste its token in <strong>Assistant → Connection</strong>.</li>
+<li>Cloud AI (OpenAI and others) is <strong>off</strong> unless the admin enables it for specific spaces. Even then,<br>
+emails, card numbers, keys and passwords are masked before sending.</li>
+<li>The assistant cannot change, move, share or delete anything. It only reads and suggests.</li>
+<li>Treat its answers as suggestions and check the cited sources.</li>
+</ul>
+<h2 id="6-backups-and-restore">6. Backups and restore</h2>
+<p>Set this up on day one (details in DEPLOYMENT.md §5):</p>
+<ol>
+<li>Plug in a USB disk, or get a cheap off-site storage account (Backblaze B2, or a friend's NAS over SFTP).</li>
+<li>Install <strong>restic</strong> (free). Create a backup password and store it in your password manager <strong>and</strong> on paper.</li>
+<li>Run <code class="notranslate">deploy/backup/backup.sh</code> every night (your admin or a cron job does this).</li>
+<li>Every few months, practice a restore onto a spare computer with <code class="notranslate">restore.sh</code>.</li>
+</ol>
+<p>Backups are encrypted, and the files inside were already encrypted, so it is safe to keep them in the cloud.</p>
+<p><strong>What if…</strong></p>
+<markdown-accessiblity-table><table role="table">
+<thead>
+<tr>
+<th>Problem</th>
+<th>Fix</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Forgot password</td>
+<td>Sign-in screen → recovery with your recovery key</td>
+</tr>
+<tr>
+<td>Lost recovery key <strong>and</strong> forgot password</td>
+<td>The data is unrecoverable. This is the cost of real privacy. Make sure everyone stores their key</td>
+</tr>
+<tr>
+<td>Lost authenticator app</td>
+<td>Use one of the 10 backup codes</td>
+</tr>
+<tr>
+<td>Server died</td>
+<td>Restore from backup onto any computer; apps reconnect</td>
+</tr>
+<tr>
+<td>Disk almost full</td>
+<td>You'll get an alert if a webhook is configured; add storage or set quotas</td>
+</tr>
+</tbody>
+</table></markdown-accessiblity-table>
+<h2 id="7-keeping-it-secure-and-up-to-date">7. Keeping it secure and up to date</h2>
+<ul>
+<li>Update monthly, or immediately when a security release is announced:<br>
+<code class="notranslate">docker compose pull &amp;&amp; docker compose up -d</code>. Back up first.</li>
+<li>Desktop apps update themselves (you will be asked). Phone apps update through the store.</li>
+<li>Check <strong>Admin → Audit log</strong> occasionally for unfamiliar sign-ins or failed attempts.</li>
+<li>Keep the server OS updated, and use full-disk encryption on the server and laptops.</li>
+<li>Keep sign-up on <strong>invite</strong> mode if the server is reachable from the internet.</li>
+</ul></article></main>
+<footer class="wrap foot">Licensed AGPL-3.0-or-later · vNAS is pre-1.0 software. Keep backups. · <a href="../">Home</a></footer>
+</body>
+</html>
