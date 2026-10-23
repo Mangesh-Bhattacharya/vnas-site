@@ -198,7 +198,11 @@ for "exists but not yours"), <code class="notranslate">conflict</code> 409 (<cod
 </table></markdown-accessiblity-table>
 <p><strong>Password vault CRUD</strong> is this API on a <code class="notranslate">vault</code> space with <code class="notranslate">kind: "secret"</code>. Payload (encrypted):<br>
 <code class="notranslate">{type: "login", fields: {username: {value, updatedAt}, password: {value, updatedAt, concealed:true}, url, totp, notes}}</code>.<br>
-<strong>Notes CRUD</strong> uses a <code class="notranslate">notes</code> space with <code class="notranslate">kind: "note"</code> and payload <code class="notranslate">{format: "markdown", body}</code>.</p>
+<strong>Notes CRUD</strong> uses a <code class="notranslate">notes</code> space with <code class="notranslate">kind: "note"</code> and payload <code class="notranslate">{format: "markdown", body}</code>.<br>
+<strong>Organization directory</strong> (Admin, Board of Directors, IT, on-site/off-site technicians, clients) uses a <code class="notranslate">records</code> space<br>
+with <code class="notranslate">kind: "record"</code> and <code class="notranslate">encPayload.schema = "vnas.directory.v1"</code>; the fixed field set (name, role, phone numbers,<br>
+one address, email, and company size for clients) is a client-side convention only — see <code class="notranslate">packages/core/src/directory.ts</code><br>
+and the <code class="notranslate">Directory</code> page in the web client. No server change: it's ciphertext like every other record.</p>
 <h2 id="files">Files</h2>
 <markdown-accessiblity-table><table role="table">
 <thead>
