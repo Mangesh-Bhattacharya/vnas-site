@@ -97,15 +97,20 @@ dependencies. One static binary, no runtime.</li>
 <td><strong>Change</strong></td>
 <td>A row in the global, monotonic change feed that drives delta sync</td>
 </tr>
+<tr>
+<td><strong>Intake link</strong></td>
+<td>A space's one-way, unauthenticated <em>write</em> door: an anonymous visitor seals a record and/or files to the link's own keypair instead of the space key. See docs/SECURITY.md T12 and docs/API.md's <a href="API.html#intake-links">Intake links</a></td>
+</tr>
 </tbody>
 </table></markdown-accessiblity-table>
 <p>Sharing a folder means making it its own space (or a sub-space) and adding members. Groups are<br>
 directory entries: sharing with a group seals the space key to each member individually.</p>
-<h3 id="tables-sqlite-serverinternaldbmigrations0001initsql">Tables (SQLite, <code class="notranslate">server/internal/db/migrations/0001_init.sql</code>)</h3>
+<h3 id="tables-sqlite-serverinternaldbmigrations0001initsql-0002intakelinkssql">Tables (SQLite, <code class="notranslate">server/internal/db/migrations/0001_init.sql</code>, <code class="notranslate">0002_intake_links.sql</code>)</h3>
 <pre class="notranslate"><code class="notranslate">users ─┬─&lt; devices ─&lt; sessions
        ├─&lt; mfa_recovery_codes
        ├─&lt; space_members &gt;─ spaces ─┬─&lt; items ─┬─&lt; item_versions ─&lt; version_chunks &gt;─ chunks
-       └─&lt; group_members &gt;─ groups  │          └─&lt; share_links
+       └─&lt; group_members &gt;─ groups  │          ├─&lt; share_links
+                                    │          └─&lt; intake_links &gt;─ items (via items.intake_link_id)
                                     └─&lt; chunks
 changes (seq, space_id, item_id, op)     audit_log (seq, …, prev_hash, hash, sig)
 invites

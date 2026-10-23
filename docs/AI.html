@@ -115,6 +115,26 @@ filtered by space on every request.</li>
 <td>Document text is wrapped in <code class="notranslate">&lt;document&gt;</code> tags with a system rule to treat it as untrusted data; the assistant has <strong>no write or share tools</strong>, so injected instructions cannot act</td>
 <td>—</td>
 </tr>
+<tr>
+<td>Tag-boundary forgery</td>
+<td><code class="notranslate">packages/ai/src/firewall.ts</code>'s <code class="notranslate">sanitizeForPrompt</code> neutralizes any <code class="notranslate">&lt;document&gt;</code>/<code class="notranslate">&lt;/document&gt;</code> sequence <em>inside</em> retrieved text before it's interpolated, so a document body cannot forge a fake tag boundary and make its content look like a second, separate <code class="notranslate">&lt;document&gt;</code> block</td>
+<td>—</td>
+</tr>
+<tr>
+<td>Injection-phrase visibility</td>
+<td><code class="notranslate">detectInjectionSignals</code> flags (never silently drops) retrieved text matching common hijack phrasing ("ignore previous instructions", role-override, …); flagged documents are returned from <code class="notranslate">/v1/chat</code> as <code class="notranslate">flagged:[{docId,title,signals}]</code> so an owner can see injection attempts in their own data for the first time</td>
+<td>heuristic, defense-in-depth only</td>
+</tr>
+<tr>
+<td>Per-item AI opt-out</td>
+<td>Every item has <code class="notranslate">aiIndexable</code> (default <code class="notranslate">true</code>); turn it off for one note/file/record without unsharing the whole space</td>
+<td>per item, via <code class="notranslate">PUT /items/{id}</code></td>
+</tr>
+<tr>
+<td>Intake-link submissions</td>
+<td><strong>Never</strong> auto-indexed: the server forces <code class="notranslate">aiIndexable=false</code> on everything created through an <a href="API.html#intake-links">intake link</a> — the single most attacker-controlled content source in vNAS. Indexing only happens if a human explicitly opts in while promoting the submission</td>
+<td>not configurable; see docs/SECURITY.md T12</td>
+</tr>
 </tbody>
 </table></markdown-accessiblity-table>
 <h2 id="4-choosing-a-model-all-free">4. Choosing a model (all free)</h2>

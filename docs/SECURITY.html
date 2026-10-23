@@ -282,8 +282,8 @@ both return 404, so IDs cannot be probed. Vault entries are excluded from public
 <tr>
 <td>T9</td>
 <td><strong>AI-specific</strong>: prompt injection, cross-user leakage, exfiltration to cloud</td>
-<td>The agent is a separate least-privilege account; retrieval filtered by space; secrets never indexed; documents wrapped as untrusted data; no write tools; cloud use off by default, per-space allow-list, reversible redaction</td>
-<td>A model hallucinating — answers cite sources</td>
+<td>The agent is a separate least-privilege account; retrieval filtered by space; secrets never indexed; documents wrapped as untrusted data with tag-boundary forgery neutralized (<code class="notranslate">packages/ai/src/firewall.ts</code>); known injection phrasing is flagged (not silently dropped) and surfaced to the owner; no write tools; per-item <code class="notranslate">aiIndexable</code> opt-out; cloud use off by default, per-space allow-list, reversible redaction</td>
+<td>A model hallucinating — answers cite sources. The firewall's phrase/pattern detection is heuristic and can miss novel phrasings — the structural controls (no write tools, space filtering, forced non-indexing of intake content) are what actually bound the damage</td>
 </tr>
 <tr>
 <td>T10</td>
@@ -296,6 +296,12 @@ both return 404, so IDs cannot be probed. Vault entries are excluded from public
 <td><strong>Audit tampering</strong></td>
 <td>Append-only triggers, hash chain, per-row Ed25519 signatures, <code class="notranslate">vnasd audit-verify</code></td>
 <td>Root can delete the whole tail; ship logs off-box (§6)</td>
+</tr>
+<tr>
+<td>T12</td>
+<td><strong>Anonymous intake submission</strong>: malicious submission content, resource exhaustion, intake-link leakage</td>
+<td>Zero-knowledge preserved (sealed per-item keys, never the space key); per-IP and per-link rate limits; per-submission size/file-count caps enforced before any item is written; <code class="notranslate">secret</code>/<code class="notranslate">folder</code>-as-top-level items unreachable from this path; <code class="notranslate">vault</code>/<code class="notranslate">notes</code> spaces cannot host intake links; submissions land <code class="notranslate">pending</code>/<code class="notranslate">ai_indexable=false</code> and are invisible in the normal item list until a human reviews and promotes or rejects (trashes) them; every anonymous action is still audit-logged and IP-attributed</td>
+<td>A removed space member who once recovered an intake link's private key can still decrypt submissions made through that <em>specific</em> link until the owner also rotates it — <code class="notranslate">rotateSpaceKey</code> does this automatically for every active link, but it is not retroactive for submissions already received. A leaked link can be revoked instantly, but not un-leaked</td>
 </tr>
 </tbody>
 </table></markdown-accessiblity-table>
@@ -331,6 +337,10 @@ compiled into the app, and installs. Installers are additionally Authenticode / 
 <li>The web client trusts the server to serve honest JavaScript. Use desktop/mobile apps for maximum assurance.</li>
 <li>WebAuthn, OPAQUE, key transparency and off-box audit shipping are pending (see ROADMAP).</li>
 <li>Full-text search runs on clients only.</li>
+<li>Intake links (T12): rotating a space key reissues a fresh keypair for every active intake link, so a removed member<br>
+loses the ability to decrypt <em>future</em> submissions through it — but this is not retroactive for submissions received<br>
+before rotation, and the total-size cap on a submission is enforced at commit time rather than streamed per chunk<br>
+(bounded in the meantime by per-IP/per-link rate limits and the existing chunk GC, not by a hard per-byte gate).</li>
 </ul>
 <h2 id="9-reporting-vulnerabilities">9. Reporting vulnerabilities</h2>
 <p>Report privately through GitHub: <a href="https://github.com/Mangesh-Bhattacharya/vnas-site/security/advisories/new">open a private security advisory</a>.<br>

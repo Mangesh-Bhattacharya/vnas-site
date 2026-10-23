@@ -155,9 +155,13 @@ for "exists but not yours"), <code class="notranslate">conflict</code> 409 (<cod
 <div class="highlight highlight-source-json"><pre class="notranslate">{ <span class="pl-ent">"id"</span>: <span class="pl-s"><span class="pl-pds">"</span>…<span class="pl-pds">"</span></span>, <span class="pl-ent">"spaceId"</span>: <span class="pl-s"><span class="pl-pds">"</span>…<span class="pl-pds">"</span></span>, <span class="pl-ent">"parentId"</span>: <span class="pl-c1">null</span>, <span class="pl-ent">"kind"</span>: <span class="pl-s"><span class="pl-pds">"</span>note<span class="pl-pds">"</span></span>,
   <span class="pl-ent">"encMeta"</span>: <span class="pl-s"><span class="pl-pds">"</span>…<span class="pl-pds">"</span></span>, <span class="pl-ent">"wrappedItemKey"</span>: <span class="pl-s"><span class="pl-pds">"</span>…<span class="pl-pds">"</span></span>, <span class="pl-ent">"keyEpoch"</span>: <span class="pl-c1">1</span>, <span class="pl-ent">"encPayload"</span>: <span class="pl-s"><span class="pl-pds">"</span>…<span class="pl-pds">"</span></span>,
   <span class="pl-ent">"currentVersion"</span>: <span class="pl-c1">0</span>, <span class="pl-ent">"sizeBytes"</span>: <span class="pl-c1">812</span>, <span class="pl-ent">"revision"</span>: <span class="pl-c1">1042</span>, <span class="pl-ent">"deletedAt"</span>: <span class="pl-c1">null</span>,
-  <span class="pl-ent">"createdAt"</span>: <span class="pl-c1">1760000000</span>, <span class="pl-ent">"updatedAt"</span>: <span class="pl-c1">1760000000</span>, <span class="pl-ent">"updatedBy"</span>: <span class="pl-s"><span class="pl-pds">"</span>…<span class="pl-pds">"</span></span>, <span class="pl-ent">"updatedDevice"</span>: <span class="pl-s"><span class="pl-pds">"</span>…<span class="pl-pds">"</span></span> }</pre></div>
+  <span class="pl-ent">"createdAt"</span>: <span class="pl-c1">1760000000</span>, <span class="pl-ent">"updatedAt"</span>: <span class="pl-c1">1760000000</span>, <span class="pl-ent">"updatedBy"</span>: <span class="pl-s"><span class="pl-pds">"</span>…<span class="pl-pds">"</span></span>, <span class="pl-ent">"updatedDevice"</span>: <span class="pl-s"><span class="pl-pds">"</span>…<span class="pl-pds">"</span></span>,
+  <span class="pl-ent">"wrapScheme"</span>: <span class="pl-s"><span class="pl-pds">"</span>space<span class="pl-pds">"</span></span>, <span class="pl-ent">"intakeStatus"</span>: <span class="pl-c1">null</span>, <span class="pl-ent">"intakeLinkId"</span>: <span class="pl-c1">null</span>, <span class="pl-ent">"aiIndexable"</span>: <span class="pl-c1">true</span> }</pre></div>
 <p>Allowed kinds per space: drive → folder/file · vault → folder/secret · notes → folder/note · records → folder/record.<br>
-<code class="notranslate">encPayload</code> (≤ 1 MiB) carries notes, vault entries and records; files use versions.</p>
+<code class="notranslate">encPayload</code> (≤ 1 MiB) carries notes, vault entries and records; files use versions.<br>
+<code class="notranslate">wrapScheme</code> is <code class="notranslate">"space"</code> (normal, symmetric under the space key) or <code class="notranslate">"intake"</code> (sealed to an intake link's keypair — see<br>
+<a href="#intake-links">Intake links</a> below); <code class="notranslate">intakeStatus</code> is <code class="notranslate">null</code> except for intake-created items (<code class="notranslate">pending</code>/<code class="notranslate">accepted</code>/<code class="notranslate">rejected</code>);<br>
+<code class="notranslate">aiIndexable</code> gates whether the AI assistant may index the item (also a general per-item opt-out — see docs/AI.md).</p>
 <markdown-accessiblity-table><table role="table">
 <thead>
 <tr>
@@ -167,8 +171,8 @@ for "exists but not yours"), <code class="notranslate">conflict</code> 409 (<cod
 </thead>
 <tbody>
 <tr>
-<td><code class="notranslate">GET /spaces/{sid}/items?parent=&amp;kind=&amp;deleted=only|include&amp;all=1</code></td>
-<td>→ <code class="notranslate">{items:[…]}</code></td>
+<td><code class="notranslate">GET /spaces/{sid}/items?parent=&amp;kind=&amp;deleted=only|include&amp;all=1&amp;intake=pending|all</code></td>
+<td>→ <code class="notranslate">{items:[…]}</code>. <code class="notranslate">intake</code> defaults to hiding pending intake submissions; <code class="notranslate">pending</code> shows only those</td>
 </tr>
 <tr>
 <td><code class="notranslate">POST /spaces/{sid}/items</code></td>
@@ -263,6 +267,74 @@ for "exists but not yours"), <code class="notranslate">conflict</code> 409 (<cod
 </tr>
 </tbody>
 </table></markdown-accessiblity-table>
+<h2 id="intake-links">Intake links</h2>
+<p>Let an anonymous visitor (no account) deposit a record and/or documents into a <code class="notranslate">drive</code> or <code class="notranslate">records</code> space — e.g. a vendor<br>
+collecting a customer's inspection report or incident form — without the server ever seeing plaintext. The submitter's<br>
+client seals every item key to the link's own X25519 keypair (<code class="notranslate">crypto_box_seal</code>) instead of the space key, which it never<br>
+has. Submissions land as normal items with <code class="notranslate">intakeStatus: "pending"</code> and <code class="notranslate">aiIndexable: false</code>; the owner reviews, decrypts<br>
+and <strong>promotes</strong> them (or just trashes/rejects them like any other item). See docs/SECURITY.md T12 for the threat model,<br>
+including the residual risk around a removed member and a static intake keypair, and why <code class="notranslate">rotateSpaceKey</code> also re-keys<br>
+every active intake link.</p>
+<p>Management (authenticated, space member):</p>
+<markdown-accessiblity-table><table role="table">
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code class="notranslate">POST /spaces/{sid}/intake-links</code></td>
+<td>owner/editor on a <code class="notranslate">drive</code>/<code class="notranslate">records</code> space: <code class="notranslate">{parentId, publicKey, wrappedIntakeKey, keyEpoch, formSchema, expiresAt, maxSubmissions?, maxSubmissionBytes}</code> → <code class="notranslate">{id, token, url}</code></td>
+</tr>
+<tr>
+<td><code class="notranslate">GET /spaces/{sid}/intake-links</code></td>
+<td>→ <code class="notranslate">{links:[{id, parentId, createdBy, publicKey, wrappedIntakeKey, keyEpoch, formSchema, maxSubmissions, submissionsCount, maxSubmissionBytes, bytesReceived, expiresAt, revoked, createdAt}]}</code></td>
+</tr>
+<tr>
+<td><code class="notranslate">POST /intake-links/{lid}/revoke</code></td>
+<td>→ 204</td>
+</tr>
+<tr>
+<td><code class="notranslate">POST /intake-links/{lid}/rotate-key</code></td>
+<td><code class="notranslate">{publicKey, wrappedIntakeKey, keyEpoch}</code> → 204</td>
+</tr>
+<tr>
+<td><code class="notranslate">POST /items/{id}/promote-intake</code></td>
+<td><code class="notranslate">{baseRevision, wrappedItemKey, keyEpoch, aiIndexable}</code> → item; flips <code class="notranslate">wrapScheme</code> to <code class="notranslate">"space"</code> and <code class="notranslate">intakeStatus</code> to <code class="notranslate">"accepted"</code></td>
+</tr>
+</tbody>
+</table></markdown-accessiblity-table>
+<p>Public (no auth; stricter per-IP and per-link rate limits than share links, since this is a write surface):</p>
+<markdown-accessiblity-table><table role="table">
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code class="notranslate">GET /intake/{token}</code></td>
+<td>→ <code class="notranslate">{spaceKind, publicKey, formSchema, maxSubmissionBytes, maxFiles, maxChunkBytes, expiresAt}</code></td>
+</tr>
+<tr>
+<td><code class="notranslate">POST /intake/{token}/chunks/missing</code></td>
+<td><code class="notranslate">{ids:[…]}</code> → <code class="notranslate">{missing:[…]}</code></td>
+</tr>
+<tr>
+<td><code class="notranslate">PUT /intake/{token}/chunks/{cid}</code></td>
+<td>same shape as the authenticated chunk upload</td>
+</tr>
+<tr>
+<td><code class="notranslate">POST /intake/{token}/submissions</code></td>
+<td><code class="notranslate">{submissionId, record?:{…}}</code> for a <code class="notranslate">records</code> link, or <code class="notranslate">{submissionId, folder:{…}, files:[…]}</code> for a <code class="notranslate">drive</code> link → <code class="notranslate">201 {submissionId}</code></td>
+</tr>
+</tbody>
+</table></markdown-accessiblity-table>
+<p>Unknown, revoked, expired or exhausted links all collapse to the same <code class="notranslate">404 intake_gone</code>, matching share links' probing<br>
+resistance. <code class="notranslate">secret</code> and <code class="notranslate">folder</code>-as-top-level items are never reachable from this path.</p>
 <h2 id="admin-roleadmin">Admin (<code class="notranslate">role=admin</code>)</h2>
 <markdown-accessiblity-table><table role="table">
 <thead>
@@ -315,7 +387,7 @@ for "exists but not yours"), <code class="notranslate">conflict</code> 409 (<cod
 </tr>
 <tr>
 <td><code class="notranslate">POST /v1/chat</code></td>
-<td><code class="notranslate">{message, history?:[{role, content}], spaces?:[ids]}</code> → <code class="notranslate">{answer, citations:[{docId, title, path}], provider, usedCloud, redactions}</code></td>
+<td><code class="notranslate">{message, history?:[{role, content}], spaces?:[ids]}</code> → <code class="notranslate">{answer, citations:[{docId, title, path}], provider, usedCloud, redactions, flagged:[{docId, title, signals}]}</code> — <code class="notranslate">flagged</code> lists retrieved documents whose text matched known prompt-injection phrasing; surfaced for visibility, not acted on (docs/AI.md §3)</td>
 </tr>
 <tr>
 <td><code class="notranslate">POST /v1/summarize</code></td>
