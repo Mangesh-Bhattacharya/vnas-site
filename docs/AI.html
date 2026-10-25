@@ -68,8 +68,23 @@ filtered by space on every request.</li>
 <td>Sharing-risk alerts</td>
 <td><code class="notranslate">/v1/insights</code>: over-broad shares. The admin audit log covers link creation and opens</td>
 </tr>
+<tr>
+<td>Company/staff/client Q&amp;A</td>
+<td>Share the <a href="API.html#items-files-folders-notes-vault-entries-records">organization directory</a> space with the assistant like any other space, and ask things like "who's our IT contact?" or "what's Acme's company size?" — directory entries are indexed as readable prose (<code class="notranslate">apps/agent/src/main.ts</code>'s <code class="notranslate">formatDirectoryEntry</code>), not raw JSON, for better answers</td>
+</tr>
 </tbody>
 </table></markdown-accessiblity-table>
+<h3 id="asking-about-your-directory">Asking about your directory</h3>
+<p>The assistant has no special-cased "database mode" — a directory entry is just a <code class="notranslate">record</code> item like<br>
+any other, so the privacy rules above apply exactly as they do everywhere else: nothing is visible<br>
+until you share that space (viewer role) with the assistant's account, retrieval is still filtered to<br>
+spaces you shared, and vault entries are still never indexed. Once shared, ask it things like:</p>
+<ul>
+<li><em>"Who's the on-site technician for the Acme account?"</em></li>
+<li><em>"List our IT team's phone numbers."</em></li>
+<li><em>"What's the company size on file for [client]?"</em></li>
+</ul>
+<p>Answers cite the specific directory entry they came from, the same as any other document.</p>
 <h2 id="3-privacy-controls">3. Privacy controls</h2>
 <markdown-accessiblity-table><table role="table">
 <thead>
